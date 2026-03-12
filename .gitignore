@@ -34,8 +34,8 @@ config/settings.json
 *.utoc
 *.usmap
 
-# Tools (binaries — download separately)
-tools/
+# Tools (binaries — committed to repo for CI reproducibility)
+# tools/
 
 # Bundled third-party source
 temp_uassettool_src/
