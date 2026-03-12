@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+
+# Project — generated / runtime data
+output/
+data/images/
+data/extracted/
+data/game_link/
+config/settings.json
+*.log
+
+# Game files
+*.pak
+*.ucas
+*.utoc
+*.usmap
+
+# Tools (binaries — download separately)
+tools/
+
+# Bundled third-party source
+temp_uassettool_src/
+
+# Example / test output
+example/
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
