@@ -405,13 +405,21 @@ class RetocWrapper:
             pack_result.ucas_path,
         ]
 
+        copied: list[Path] = []
         for src in files_to_copy:
             if src and src.exists():
                 dst = mods_dir / src.name
-                shutil.copy2(str(src), str(dst))
+                try:
+                    shutil.copy2(str(src), str(dst))
+                    copied.append(src)
+                except OSError as exc:
+                    return PackResult(
+                        False,
+                        error=f"Failed to copy {src.name} to ~mods: {exc}",
+                    )
 
         # Clean up the source output files now that they've been deployed
-        for src in files_to_copy:
+        for src in copied:
             if src and src.exists():
                 try:
                     src.unlink()

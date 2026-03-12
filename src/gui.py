@@ -303,6 +303,14 @@ class App(ctk.CTk):
 
     def _preload_all(self) -> None:
         """Background thread: fetch skin DB → costumes API → download all images."""
+        try:
+            self._preload_all_inner()
+        except Exception as exc:
+            self._set_load_status(f"[ERROR] Startup failed: {exc}", progress=1.0)
+            self.after(1500, self._finish_loading)
+
+    def _preload_all_inner(self) -> None:
+        """Inner body of _preload_all — wrapped by _preload_all for safety."""
         api_key = self.settings.api_key
 
         # --- Step 1: Skin database (one API call) ---
@@ -784,13 +792,17 @@ class App(ctk.CTk):
 
             retoc = RetocWrapper(output_dir=self.output_dir,
                                   game_paks_dir=game_paks)
-            for p in retoc.validate():
-                self._log_async(f"[WARN] {p}")
+            retoc_problems = retoc.validate()
+            if retoc_problems:
+                for p in retoc_problems:
+                    self._log_async(f"[WARN] {p}")
                 return
 
             uassettool = UAssetToolWrapper(output_dir=self.output_dir)
-            for p in uassettool.validate():
-                self._log_async(f"[WARN] {p}")
+            uassettool_problems = uassettool.validate()
+            if uassettool_problems:
+                for p in uassettool_problems:
+                    self._log_async(f"[WARN] {p}")
                 return
 
             engine = SwapEngine(retoc, uassettool)
@@ -848,36 +860,40 @@ class App(ctk.CTk):
             self._log("Nothing to remove.")
             return
 
+        self._busy = True
         self._clear_log()
         self._show_log()
         self._log(f"Removing {character.name} swap ({swap.skin_name})...")
 
-        removed = 0
-        for p_str in (swap.pak_path, swap.utoc_path, swap.ucas_path):
-            if p_str:
-                p = Path(p_str)
-                if p.exists():
-                    try:
-                        p.unlink()
-                        removed += 1
-                    except OSError as e:
-                        self._log(f"  [WARN] Could not delete {p.name}: {e}")
+        try:
+            removed = 0
+            for p_str in (swap.pak_path, swap.utoc_path, swap.ucas_path):
+                if p_str:
+                    p = Path(p_str)
+                    if p.exists():
+                        try:
+                            p.unlink()
+                            removed += 1
+                        except OSError as e:
+                            self._log(f"  [WARN] Could not delete {p.name}: {e}")
 
-        if swap.mod_name:
-            for ext in (".pak", ".utoc", ".ucas"):
-                p = self.output_dir / f"{swap.mod_name}_9999999_P{ext}"
-                if p.exists():
-                    try:
-                        p.unlink()
-                        removed += 1
-                    except OSError:
-                        pass
+            if swap.mod_name:
+                for ext in (".pak", ".utoc", ".ucas"):
+                    p = self.output_dir / f"{swap.mod_name}_9999999_P{ext}"
+                    if p.exists():
+                        try:
+                            p.unlink()
+                            removed += 1
+                        except OSError:
+                            pass
 
-        self.settings.clear_swap(character.char_id)
-        save_settings(self.settings)
+            self.settings.clear_swap(character.char_id)
+            save_settings(self.settings)
 
-        self._log(f"Removed — {removed} file(s) deleted")
-        self._show_skin_list(character.name)
+            self._log(f"Removed — {removed} file(s) deleted")
+        finally:
+            self._busy = False
+            self._show_skin_list(character.name)
 
     # ------------------------------------------------------------------
     # Settings

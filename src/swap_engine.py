@@ -509,13 +509,9 @@ class SwapEngine:
                 default_mesh_dir = def_asset_dirs["Meshes"]
                 default_mesh_files = sorted(default_mesh_dir.glob("*"))
 
-                # Ensure the Meshes staging dir exists for physics
-                if "Meshes" in def_asset_dirs:
-                    def_meshes_rel = default_mesh_dir.relative_to(default_weapons_root)
-                    physics_target = content_base / "Weapons" / def_meshes_rel
-                    physics_target.mkdir(parents=True, exist_ok=True)
-                else:
-                    continue
+                def_meshes_rel = default_mesh_dir.relative_to(default_weapons_root)
+                physics_target = content_base / "Weapons" / def_meshes_rel
+                physics_target.mkdir(parents=True, exist_ok=True)
 
                 for phys_path in default_mesh_files:
                     if not phys_path.is_file():

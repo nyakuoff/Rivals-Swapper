@@ -72,7 +72,7 @@ class SkinDatabase:
             any_id = entries[0].get("id", "")
             if not any_id:
                 continue
-            char_id = any_id[:4]  # first 4 digits = character ID
+            char_id = any_id[:-3]  # strip trailing "001" suffix → character ID
 
             default_skin_id = f"{char_id}001"
 

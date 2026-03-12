@@ -52,3 +52,6 @@ python main.py
 2. **Swap Engine** mirrors the original folder tree to replace the default skin's mesh files with the chosen skin's meshes
 3. **repak-gui.exe --pack** converts the folder to IOStore format (`.pak` + `.utoc` + `.ucas`) in one automated step — no manual drag-and-drop needed
 4. The final files are copied to the game's `~mods` folder
+
+> [!NOTE]
+> **AI Disclaimer**: Parts of this project were assisted or written by AI. If that's something you're not comfortable with, no hard feelings, I understand and I don't force anyone to use it. The code may have flaws. If you spot something that could be better, contributions are very welcome. I'm still learning and would appreciate the help.
