@@ -570,10 +570,24 @@ def patch_childbp_uasset(
     return modified
 
 
-def _is_self_reference_path(name: str, source_skin_id: str) -> bool:
+def _is_self_reference_path(name: str, source_skin_id: str,
+                            skip_texture_refs: bool = False) -> bool:
     """
     Determine whether a name-map entry is a "self-reference" that must
     be patched, vs an external import that should be left alone.
+
+    Parameters
+    ----------
+    name : str
+        The name-map entry string.
+    source_skin_id : str
+        The skin ID being replaced.
+    skip_texture_refs : bool
+        When True, texture references (``T_*`` short names and full
+        paths containing ``/Textures/``) are NOT treated as self-
+        references.  This is used when no texture files are staged —
+        the textures remain in the base game paks under the source
+        skin's paths, so their references must stay unchanged.
 
     We ONLY patch:
       • The asset's own path that goes through a /Meshes/, /Materials/,
@@ -591,6 +605,7 @@ def _is_self_reference_path(name: str, source_skin_id: str) -> bool:
       • Material import paths that reference a DIFFERENT skin's assets
         (only relevant when a mesh file imports MI_ from the source skin;
          but for material/texture files we DO patch their own self-ref)
+      • Texture references when skip_texture_refs is True
       • Any other import paths (Physics, Skeleton, Blueprints)
 
     For VFX files the only name-map entries referencing the source skin
@@ -605,22 +620,28 @@ def _is_self_reference_path(name: str, source_skin_id: str) -> bool:
     # Full paths containing the skin ID in known asset directories
     # are self-references for this package
     if "/" in name:
-        for marker in ("/Meshes/", "/Materials/", "/Textures/",
-                        "/Weapons/", "/VFX/"):
+        for marker in ("/Meshes/", "/Materials/", "/Weapons/", "/VFX/"):
             if marker in name:
                 return True
+        # Texture paths — skip if textures are not staged
+        if "/Textures/" in name and not skip_texture_refs:
+            return True
         # Also match folder-level paths like .../1035101/Materials
         # (the folder itself without a trailing filename)
-        if name.endswith(("/Meshes", "/Materials", "/Textures")):
+        if name.endswith(("/Meshes", "/Materials")):
+            return True
+        if name.endswith("/Textures") and not skip_texture_refs:
             return True
 
     # Short export names (no slash) that embed the skin ID
     # — SK_ covers character meshes & weapon meshes (SK_WP_*)
     # — SM_ covers VFX static meshes and weapon static meshes
     # — MI_ / M_ covers material instances
-    # — T_ covers textures
+    # — T_ covers textures (skipped when skip_texture_refs is True)
     if "/" not in name:
-        if name.startswith(("SK_", "SM_", "MI_", "M_", "T_")):
+        if name.startswith(("SK_", "SM_", "MI_", "M_")):
+            return True
+        if name.startswith("T_") and not skip_texture_refs:
             return True
         # VFX particle short names
         if name.startswith(("NS_", "NE_")):
@@ -634,6 +655,7 @@ def patch_skin_id_in_uasset(
     source_skin_id: str,
     target_skin_id: str,
     output_path: Optional[Path] = None,
+    skip_texture_refs: bool = False,
 ) -> list[str]:
     """
     Patch the FolderName header, selective name-map entries, and export-
@@ -641,25 +663,27 @@ def patch_skin_id_in_uasset(
     *target* skin's IoStore path, while keeping material/texture import
     references pointing at the *source* skin's original assets.
 
+    Parameters
+    ----------
+    skip_texture_refs : bool
+        When True, texture references (``T_*`` short names and
+        ``/Textures/`` full paths) in the name map are left alone.
+        Use this when no texture files are staged — the textures
+        remain in the base game paks and must keep their original
+        source-skin paths.
+
     What gets patched:
       • FolderName FString in the package header (drives IoStore PackageId)
       • Self-reference paths under /Meshes/ in the name map
+      • Material paths under /Materials/ in the name map
       • VFX self-reference paths under /VFX/ in the name map
       • Export object names that embed the skin ID (e.g. SK_1055_1055500_Lobby)
       • FName Number fields in the export table whose Number equals
-        int(source_skin_id)+1  (UE5 FName instancing — the SkeletalMesh
-        export uses base name "SK_XXXX" with Number=skin_id+1 so that
-        the displayed name becomes "SK_XXXX_<skin_id>"; this also
-        drives the PublicExportHash that the game uses for lookup)
+        int(source_skin_id)+1  (UE5 FName instancing)
 
     What is LEFT ALONE:
-      • Material import paths  (/…/Materials/MI_1055500_Body)
-      • Material short names   (MI_1055500_Body)
+      • Texture references when skip_texture_refs is True
       • Any other import paths (Physics, Skeleton, Blueprints)
-
-    This way the mesh keeps referencing its own materials & textures
-    (which exist in the game's base paks for the source skin) instead
-    of trying to load materials that belong to the default skin.
     """
     if output_path is None:
         output_path = uasset_path
@@ -715,7 +739,8 @@ def patch_skin_id_in_uasset(
             continue
 
         # Only patch self-reference paths, not material imports
-        if not _is_self_reference_path(name_str, source_skin_id):
+        if not _is_self_reference_path(name_str, source_skin_id,
+                                       skip_texture_refs=skip_texture_refs):
             continue
 
         new_name = name_str.replace(source_skin_id, target_skin_id)

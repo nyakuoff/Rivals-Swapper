@@ -14,15 +14,20 @@ Marvel Rivals–specific auto-fixes during conversion:
 retoc is still used for IoStore → legacy extraction (to-legacy).
 """
 
+import sys
 import subprocess
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
 
+from ._paths import PROJECT_ROOT, TOOLS_DIR
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-UASSETTOOL_EXE = PROJECT_ROOT / "tools" / "uassettool" / "UAssetTool.exe"
-UASSETTOOL_DIR = PROJECT_ROOT / "tools" / "uassettool"
+_UASSETTOOL_NAME = "UAssetTool.exe" if sys.platform == "win32" else "UAssetTool"
+UASSETTOOL_EXE = TOOLS_DIR / "uassettool" / _UASSETTOOL_NAME
+UASSETTOOL_DIR = TOOLS_DIR / "uassettool"
+
+# Hide console window when launching subprocesses on Windows
+_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 
 def _find_usmap() -> Optional[Path]:
@@ -63,7 +68,7 @@ class UAssetToolWrapper:
         """Return a list of problems (empty = all good)."""
         problems: list[str] = []
         if not UASSETTOOL_EXE.is_file():
-            problems.append(f"UAssetTool.exe not found at: {UASSETTOOL_EXE}")
+            problems.append(f"UAssetTool not found at: {UASSETTOOL_EXE}")
         if not self.usmap_path or not self.usmap_path.is_file():
             problems.append(
                 f"No .usmap file found in {UASSETTOOL_DIR}. "
@@ -131,11 +136,12 @@ class UAssetToolWrapper:
                 capture_output=True,
                 text=True,
                 timeout=300,
+                creationflags=_SUBPROCESS_FLAGS,
             )
         except FileNotFoundError:
             return PackResult(
                 False,
-                error=f"UAssetTool.exe not found at {UASSETTOOL_EXE}",
+                error=f"UAssetTool not found at {UASSETTOOL_EXE}",
             )
         except subprocess.TimeoutExpired:
             return PackResult(False, error="UAssetTool create_mod_iostore timed out (300s)")

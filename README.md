@@ -1,8 +1,8 @@
-# Rivals-Swapper
+# Rivals Swapper
 
 A Marvel Rivals skin changer tool that lets you swap character skins by generating mod files (`.pak` / `.utoc` / `.ucas`) using **repak-rivals**.
 
-> **Client-side cosmetic only** — does not modify game logic or provide any competitive advantage.
+> **Client-side cosmetic only** | does not modify game logic or provide any competitive advantage.
 
 ---
 

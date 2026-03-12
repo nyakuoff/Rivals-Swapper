@@ -11,17 +11,22 @@ Pipeline:
 """
 
 import os
+import sys
 import shutil
 import subprocess
 from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
 
+from ._paths import PROJECT_ROOT, TOOLS_DIR
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-RETOC_EXE = PROJECT_ROOT / "tools" / "retoc" / "retoc.exe"
+_RETOC_NAME = "retoc.exe" if sys.platform == "win32" else "retoc"
+RETOC_EXE = TOOLS_DIR / "retoc" / _RETOC_NAME
 
 AES_KEY = "0C263D8C22DCB085894899C3A3796383E9BF9DE0CBFB08C9BF2DEF2E84F29D74"
+
+# Hide console window when launching subprocesses on Windows
+_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 
 @dataclass
@@ -65,7 +70,7 @@ class RetocWrapper:
         """Return a list of problems (empty = all good)."""
         problems: list[str] = []
         if not RETOC_EXE.is_file():
-            problems.append(f"retoc.exe not found at: {RETOC_EXE}")
+            problems.append(f"retoc not found at: {RETOC_EXE}")
         if not self.game_paks_dir or not self.game_paks_dir.is_dir():
             problems.append("Game Paks directory not set or doesn't exist.")
         return problems
@@ -121,6 +126,7 @@ class RetocWrapper:
                 capture_output=True,
                 text=True,
                 timeout=300,
+                creationflags=_SUBPROCESS_FLAGS,
             )
         except FileNotFoundError:
             return ExtractResult(False, error=f"retoc.exe not found at {RETOC_EXE}")
@@ -349,6 +355,7 @@ class RetocWrapper:
                 capture_output=True,
                 text=True,
                 timeout=300,
+                creationflags=_SUBPROCESS_FLAGS,
             )
         except FileNotFoundError:
             return PackResult(False, error=f"retoc.exe not found at {RETOC_EXE}")

@@ -77,11 +77,15 @@ class SkinDatabase:
             default_skin_id = f"{char_id}001"
 
             skins: list[SkinInfo] = []
+            seen_skin_ids: set[str] = set()
             for entry in entries:
                 skin_id = entry.get("skinid") or entry.get("id", "")
                 skin_name = entry.get("skin_name", "Unknown")
                 url = entry.get("url", "")
-                if skin_id:
+                # Skip duplicate skin IDs — these are colour options
+                # (variants) of the same base skin and share all assets.
+                if skin_id and skin_id not in seen_skin_ids:
+                    seen_skin_ids.add(skin_id)
                     skins.append(SkinInfo(str(skin_id), skin_name, url))
 
             if name in self.characters:

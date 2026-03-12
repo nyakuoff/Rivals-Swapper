@@ -30,6 +30,7 @@ from .uassettool_wrapper import UAssetToolWrapper
 from .settings import (
     Settings, SwapRecord, load_settings, save_settings,
 )
+from ._paths import PROJECT_ROOT, ASSETS_DIR
 
 
 # ======================================================================
@@ -88,9 +89,24 @@ class SettingsWindow(ctk.CTkToplevel):
     def __init__(self, master, settings: Settings, on_save=None):
         super().__init__(master)
         self.title("Settings")
-        self.geometry("600x350")
+        self.geometry("700x380")
         self.resizable(False, False)
         self.configure(fg_color=_BG_DARK)
+
+        # Window icon (platform-aware)
+        import sys
+        if sys.platform == "win32":
+            _ico = ASSETS_DIR / "RivalsIcon_NoOutline.ico"
+            if _ico.exists():
+                self.iconbitmap(str(_ico))
+                self.after(200, lambda: self.iconbitmap(str(_ico)))
+        else:
+            _png = ASSETS_DIR / "RivalsIcon_NoOutline.png"
+            if _png.exists():
+                from PIL import ImageTk
+                self._icon_photo = ImageTk.PhotoImage(Image.open(_png))
+                self.iconphoto(True, self._icon_photo)
+
         self.settings = settings
         self.on_save = on_save
         self._build_ui()
@@ -105,15 +121,16 @@ class SettingsWindow(ctk.CTkToplevel):
 
         frame = ctk.CTkFrame(self, fg_color=_BG_CARD, corner_radius=12)
         frame.pack(fill="x", padx=24, pady=4)
+        frame.grid_columnconfigure(1, weight=1)
 
         ctk.CTkLabel(frame, text="Game Paks Folder",
                       text_color=_TEXT_DIM).grid(
             row=0, column=0, sticky="w", **pad)
         self.paks_var = ctk.StringVar(value=self.settings.game_paks_dir)
-        ctk.CTkEntry(frame, textvariable=self.paks_var, width=320,
+        ctk.CTkEntry(frame, textvariable=self.paks_var,
                       fg_color=_BG_DARK, border_color=_BORDER,
                       text_color=_TEXT).grid(
-            row=0, column=1, **pad)
+            row=0, column=1, sticky="ew", **pad)
         ctk.CTkButton(frame, text="Browse", width=80,
                        fg_color=_ACCENT, hover_color=_ACCENT_H,
                        command=lambda: self._browse(self.paks_var)).grid(
@@ -126,14 +143,14 @@ class SettingsWindow(ctk.CTkToplevel):
                          fg_color=_ACCENT, hover_color=_ACCENT_H).grid(
             row=1, column=0, columnspan=3, sticky="w", **pad)
 
-        ctk.CTkLabel(frame, text="API Key (marvelrivalsapi.com)",
+        ctk.CTkLabel(frame, text="API Key",
                       text_color=_TEXT_DIM).grid(
             row=2, column=0, sticky="w", **pad)
         self.api_key_var = ctk.StringVar(value=self.settings.api_key)
-        ctk.CTkEntry(frame, textvariable=self.api_key_var, width=320,
+        ctk.CTkEntry(frame, textvariable=self.api_key_var,
                       fg_color=_BG_DARK, border_color=_BORDER,
                       text_color=_TEXT, show="•").grid(
-            row=2, column=1, columnspan=2, **pad)
+            row=2, column=1, columnspan=2, sticky="ew", **pad)
 
         bf = ctk.CTkFrame(self, fg_color="transparent")
         bf.pack(pady=18)
@@ -184,14 +201,22 @@ class App(ctk.CTk):
         y = (sh - self.HEIGHT) // 2
         self.geometry(f"{self.WIDTH}x{self.HEIGHT}+{x}+{y}")
 
-        # Window icon
-        _icon_path = Path(__file__).resolve().parent.parent / "assets" / "RivalsIcon_NoOutline.ico"
-        if _icon_path.exists():
-            self.iconbitmap(str(_icon_path))
-            self.after(200, lambda: self.iconbitmap(str(_icon_path)))
+        # Window icon (platform-aware)
+        import sys
+        if sys.platform == "win32":
+            _ico = ASSETS_DIR / "RivalsIcon_NoOutline.ico"
+            if _ico.exists():
+                self.iconbitmap(str(_ico))
+                self.after(200, lambda: self.iconbitmap(str(_ico)))
+        else:
+            _png = ASSETS_DIR / "RivalsIcon_NoOutline.png"
+            if _png.exists():
+                from PIL import ImageTk
+                self._icon_photo = ImageTk.PhotoImage(Image.open(_png))
+                self.iconphoto(True, self._icon_photo)
 
         # Load logo for loading screen
-        _logo_path = Path(__file__).resolve().parent.parent / "assets" / "RivalsIcon_NoOutline.png"
+        _logo_path = ASSETS_DIR / "RivalsIcon_NoOutline.png"
         self._logo_pil: Image.Image | None = None
         if _logo_path.exists():
             try:
@@ -202,7 +227,7 @@ class App(ctk.CTk):
         self.settings = load_settings()
         self.db = SkinDatabase()
         self.img_cache = ImageCache()
-        self.output_dir = Path(__file__).resolve().parent.parent / "output"
+        self.output_dir = PROJECT_ROOT / "output"
         self._current_char: CharacterInfo | None = None
         self._busy = False
 
@@ -284,7 +309,7 @@ class App(ctk.CTk):
         self._set_load_status("Loading skin database…", progress=0.0)
         ok = self.db.fetch_from_api()
         if not ok:
-            self._set_load_status("⚠  Could not reach skin database",
+            self._set_load_status("WARNING: Could not reach skin database",
                                   "Starting with offline data…")
             self.after(1500, self._finish_loading)
             return
@@ -728,18 +753,18 @@ class App(ctk.CTk):
         existing = self.settings.get_swap(character.char_id)
         if existing:
             self._log(
-                f"❌ {character.name} already has an active swap "
+                f"[ERROR] {character.name} already has an active swap "
                 f"({existing.skin_name}). Remove it first.")
             return
 
         if not self.settings.game_paks_dir:
-            self._log("❌ Configure Game Paks Folder in Settings first.")
+            self._log("[ERROR] Configure Game Paks Folder in Settings first.")
             return
 
         self._busy = True
         self._clear_log()
         self._show_log()
-        self._log(f"▶ Swapping {character.name} → {skin.skin_name} "
+        self._log(f"Swapping {character.name} -> {skin.skin_name} "
                   f"({skin.skin_id})")
 
         self._show_skin_list(character.name)
@@ -754,18 +779,18 @@ class App(ctk.CTk):
         try:
             game_paks = Path(self.settings.game_paks_dir)
             if not game_paks.is_dir():
-                self._log_async("❌ Game Paks Folder not found.")
+                self._log_async("[ERROR] Game Paks Folder not found.")
                 return
 
             retoc = RetocWrapper(output_dir=self.output_dir,
                                   game_paks_dir=game_paks)
             for p in retoc.validate():
-                self._log_async(f"⚠️  {p}")
+                self._log_async(f"[WARN] {p}")
                 return
 
             uassettool = UAssetToolWrapper(output_dir=self.output_dir)
             for p in uassettool.validate():
-                self._log_async(f"⚠️  {p}")
+                self._log_async(f"[WARN] {p}")
                 return
 
             engine = SwapEngine(retoc, uassettool)
@@ -776,7 +801,7 @@ class App(ctk.CTk):
             )
 
             if not res.success:
-                self._log_async(f"❌ Swap failed: {res.error}")
+                self._log_async(f"[ERROR] Swap failed: {res.error}")
                 return
 
             pr = res.pack_result
@@ -790,22 +815,22 @@ class App(ctk.CTk):
             )
 
             if self.settings.auto_deploy:
-                self._log_async("🚀 Deploying to ~mods...")
+                self._log_async("Deploying to ~mods...")
                 dr = retoc.deploy_to_mods(res.pack_result)
                 if dr.success:
-                    self._log_async(f"✅ Deployed to {game_paks / '~mods'}")
+                    self._log_async(f"Deployed to {game_paks / '~mods'}")
                     record.pak_path  = str(dr.pak_path)  if dr.pak_path  else ""
                     record.utoc_path = str(dr.utoc_path) if dr.utoc_path else ""
                     record.ucas_path = str(dr.ucas_path) if dr.ucas_path else ""
                 else:
-                    self._log_async(f"⚠️  Deploy failed: {dr.error}")
+                    self._log_async(f"[WARN] Deploy failed: {dr.error}")
 
             self.settings.set_swap(character.char_id, record)
             save_settings(self.settings)
-            self._log_async(f"🎉 Done! {res.files_created} files swapped")
+            self._log_async(f"Done! {res.files_created} files swapped")
 
         except Exception as exc:
-            self._log_async(f"❌ Unexpected error: {exc}")
+            self._log_async(f"[ERROR] Unexpected error: {exc}")
         finally:
             self._busy = False
             self.after(0, lambda: self._show_skin_list(character.name))
@@ -825,7 +850,7 @@ class App(ctk.CTk):
 
         self._clear_log()
         self._show_log()
-        self._log(f"🗑️  Removing {character.name} swap ({swap.skin_name})...")
+        self._log(f"Removing {character.name} swap ({swap.skin_name})...")
 
         removed = 0
         for p_str in (swap.pak_path, swap.utoc_path, swap.ucas_path):
@@ -836,7 +861,7 @@ class App(ctk.CTk):
                         p.unlink()
                         removed += 1
                     except OSError as e:
-                        self._log(f"  ⚠️  Could not delete {p.name}: {e}")
+                        self._log(f"  [WARN] Could not delete {p.name}: {e}")
 
         if swap.mod_name:
             for ext in (".pak", ".utoc", ".ucas"):
@@ -851,7 +876,7 @@ class App(ctk.CTk):
         self.settings.clear_swap(character.char_id)
         save_settings(self.settings)
 
-        self._log(f"✅ Removed — {removed} file(s) deleted")
+        self._log(f"Removed — {removed} file(s) deleted")
         self._show_skin_list(character.name)
 
     # ------------------------------------------------------------------

@@ -15,16 +15,18 @@ from __future__ import annotations
 import re
 import threading
 from io import BytesIO
-from pathlib import Path as _Path
+from pathlib import Path
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from PIL import Image
 
+from ._paths import PROJECT_ROOT
+
 API_BASE = "https://marvelrivalsapi.com/api/v1"
 COSTUME_CDN = "https://marvelrivalsapi.com/rivals"
-CACHE_DIR = _Path(__file__).resolve().parent.parent / "data" / "images"
+CACHE_DIR = PROJECT_ROOT / "data" / "images"
 MAX_WORKERS = 16
 MAX_CACHED_PX = 256  # pre-resize images on disk so Tk doesn't struggle
 

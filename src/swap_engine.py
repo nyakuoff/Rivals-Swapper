@@ -23,6 +23,7 @@ Pipeline:
 """
 
 import os
+import re
 import shutil
 from pathlib import Path
 from dataclasses import dataclass
@@ -86,7 +87,10 @@ class SwapEngine:
         source_id = source_skin.skin_id
         target_id = character.default_skin_id
         char_id = character.char_id
-        mod_name = f"{character.name}_{source_skin.skin_name}".replace(" ", "_")
+        # Build a filesystem-safe mod name: replace spaces and strip any
+        # characters that are illegal in Windows/Linux filenames.
+        _raw_name = f"{character.name}_{source_skin.skin_name}".replace(" ", "_")
+        mod_name = re.sub(r'[<>:"/\\|?*]', "", _raw_name)
 
         if source_id == target_id:
             return SwapResult(
@@ -255,22 +259,34 @@ class SwapEngine:
         source_skin_root = self._find_skin_root(source_dir, source_id)
 
         # Detect retexture-only skins: no Meshes directory in source.
-        # Retexture materials are MaterialInstances that inherit from
-        # the default skin's materials.  If we rename them to the
-        # default ID they'd create a circular reference (the MI imports
-        # the default MI as parent, but now IT IS the default MI).
-        # For retexture skins we ONLY stage Textures; Materials are
-        # skipped.  The default mesh's materials will pick up our
-        # replacement textures automatically.
+        # Retexture materials are MaterialInstances that override
+        # textures from the default skin's parent material.  We stage
+        # them normally — the name-map patcher only rewrites self-
+        # reference paths (FolderName + own object name) so the
+        # parent-material import (which already uses the default skin
+        # ID) is never touched and no circular reference is created.
         has_meshes = any(
             "\\Meshes\\" in str(f) or "/Meshes/" in str(f)
             for f in source_files
         )
         is_retexture = not has_meshes
 
+        # Check if the source extraction contains any texture files.
+        # Many skins (especially mesh-swap skins) have Materials but
+        # NOT a Textures folder — the textures live elsewhere in the
+        # game paks.  When textures are NOT staged we must tell the
+        # patcher to leave T_* / /Textures/ references alone so
+        # materials keep pointing at the source skin's original textures.
+        has_textures = any(
+            "\\Textures\\" in str(f) or "/Textures/" in str(f)
+            for f in source_files
+        )
+        skip_texture_refs = not has_textures
+
         if is_retexture:
             log("  Retexture-only skin detected (no Meshes folder)")
-            log("  Skipping Materials — only Textures will be staged")
+        if skip_texture_refs:
+            log("  No Textures folder — texture references will be preserved")
 
         for src_path in source_files:
             fname = src_path.name
@@ -292,16 +308,6 @@ class SwapEngine:
             else:
                 rel = Path(fname)
 
-            # For retexture-only skins, skip Material files.
-            # Material instances inherit from the default skin's
-            # materials; renaming them to the default ID creates a
-            # circular import (the MI would import itself as its
-            # parent), crashing in FAsyncLoadingThread.
-            rel_str = str(rel).replace("\\", "/")
-            if is_retexture and rel_str.startswith("Materials"):
-                log(f"  Skipping material (retexture): {fname}")
-                continue
-
             # Rename: replace source_id with target_id in filename
             new_name = fname.replace(source_id, target_id)
             rel_renamed = rel.parent / new_name
@@ -321,7 +327,8 @@ class SwapEngine:
             if dst_path.suffix == ".uasset":
                 try:
                     modified = patch_skin_id_in_uasset(
-                        dst_path, source_id, target_id
+                        dst_path, source_id, target_id,
+                        skip_texture_refs=skip_texture_refs,
                     )
                     if modified:
                         log(f"  Patched name map: {len(modified)} entries")
@@ -357,7 +364,6 @@ class SwapEngine:
                 char_id=char_id,
                 source_id=source_id,
                 target_id=target_id,
-                is_retexture=is_retexture,
                 log=log,
             )
             file_count += wpn_count
@@ -397,7 +403,6 @@ class SwapEngine:
         char_id: str,
         source_id: str,
         target_id: str,
-        is_retexture: bool = False,
         log: LogCallback = _noop_log,
     ) -> int:
         """
@@ -408,8 +413,9 @@ class SwapEngine:
         ``Texture/``, etc.  Only weapon slots that exist in BOTH the source
         and default skins are staged.
 
-        For retexture-only skins, Materials sub-folders are skipped
-        (same circular-reference issue as body materials).
+        All sub-folders (including Materials) are staged.  The uasset
+        patcher is context-aware and will correctly handle material
+        files without creating circular references.
 
         For each common slot we copy all asset sub-folders from the source
         skin to the default skin's path so the game loads them.
@@ -448,12 +454,6 @@ class SwapEngine:
 
             # Stage each asset sub-folder (Meshes, Materials, Texture, etc.)
             for sub_name, src_sub_dir in src_asset_dirs.items():
-                # For retexture-only skins, skip Materials sub-folders.
-                # Weapon materials also inherit from default and would
-                # create circular references if renamed.
-                if is_retexture and sub_name.lower().startswith("material"):
-                    log(f"  [{slot_name}] Skipping {sub_name} (retexture)")
-                    continue
 
                 # Use the default's corresponding sub-folder to derive
                 # the correct staging path.  If the default doesn't have

@@ -10,8 +10,9 @@ from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
+from ._paths import PROJECT_ROOT
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "settings.json"
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "settings.json"
 
 
 @dataclass

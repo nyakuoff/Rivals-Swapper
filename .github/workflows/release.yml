@@ -1,0 +1,156 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag (e.g. v1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  RETOC_VERSION: "v0.1.5"
+  UASSETTOOL_VERSION: "v1.2.0"
+
+jobs:
+  # ── Windows build ──────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      # ── Download retoc (Windows) ──
+      - name: Download retoc
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/trumank/retoc/releases/download/${{ env.RETOC_VERSION }}/retoc_cli-x86_64-pc-windows-msvc.zip" -OutFile retoc.zip
+          New-Item -ItemType Directory -Path tools\retoc -Force
+          Expand-Archive -Path retoc.zip -DestinationPath tools\retoc -Force
+
+      # ── Download UAssetTool (Windows) ──
+      - name: Download UAssetTool
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/XzantGaming/UAssetToolRivals/releases/download/${{ env.UASSETTOOL_VERSION }}/UAssetTool-win-x64.zip" -OutFile uassettool.zip
+          New-Item -ItemType Directory -Path tools\uassettool -Force
+          Expand-Archive -Path uassettool.zip -DestinationPath tools\uassettool -Force
+
+      # ── Download oo2core DLL ──
+      - name: Download oo2core DLL
+        run: |
+          nuget install oo2core.dll.x64 -Version 2024.11.1 -OutputDirectory _nuget
+          $dll = Get-ChildItem _nuget -Recurse -Filter "oo2core_9_win64.dll" | Select-Object -First 1
+          Copy-Item $dll.FullName tools\retoc\oo2core_9_win64.dll
+          Copy-Item $dll.FullName tools\uassettool\oo2core_9_win64.dll
+
+      - name: Build with PyInstaller
+        run: pyinstaller build.spec --noconfirm --clean
+
+      - name: Zip release folder
+        run: Compress-Archive -Path dist\RivalsSwapper\* -DestinationPath dist\RivalsSwapper-Windows.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RivalsSwapper-Windows
+          path: dist/RivalsSwapper-Windows.zip
+
+  # ── Linux build ────────────────────────────────────────────────────
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      # ── Download retoc (Linux) ──
+      - name: Download retoc
+        run: |
+          mkdir -p tools/retoc
+          curl -sL "https://github.com/trumank/retoc/releases/download/${{ env.RETOC_VERSION }}/retoc_cli-x86_64-unknown-linux-gnu.tar.xz" | tar -xJ -C tools/retoc
+          chmod +x tools/retoc/retoc
+
+      # ── Download UAssetTool (Linux) ──
+      - name: Download UAssetTool
+        run: |
+          mkdir -p tools/uassettool
+          curl -sL "https://github.com/XzantGaming/UAssetToolRivals/releases/download/${{ env.UASSETTOOL_VERSION }}/UAssetTool-linux-x64.tar.gz" | tar -xz -C tools/uassettool
+          chmod +x tools/uassettool/UAssetTool
+
+      - name: Build with PyInstaller
+        run: pyinstaller build.spec --noconfirm --clean
+
+      - name: Archive release folder
+        run: tar -czf dist/RivalsSwapper-Linux.tar.gz -C dist RivalsSwapper
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RivalsSwapper-Linux
+          path: dist/RivalsSwapper-Linux.tar.gz
+
+  # ── Create GitHub Release ─────────────────────────────────────────
+  release:
+    needs: [build-windows, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: RivalsSwapper-Windows
+          path: artifacts
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: RivalsSwapper-Linux
+          path: artifacts
+
+      - name: Determine tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "TAG_NAME=${{ inputs.tag_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.TAG_NAME }}
+          name: Rivals Swapper ${{ steps.tag.outputs.TAG_NAME }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            artifacts/RivalsSwapper-Windows.zip
+            artifacts/RivalsSwapper-Linux.tar.gz
