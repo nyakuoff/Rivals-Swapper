@@ -369,6 +369,7 @@ class App(ctk.CTk):
             api_key, char_names,
             progress_callback=_costumes_progress,
         )
+        self.img_cache.inject_hardcoded_costumes()
 
         # --- Step 4: Collect + download missing images ---
         self._set_load_status("Preparing downloads…", progress=0.40)

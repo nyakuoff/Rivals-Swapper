@@ -15,6 +15,12 @@ API_URL = "https://rivals.natimerry.com/skins"
 # Skin names containing any of these substrings are hidden from the UI
 SKIN_BLACKLIST = ["Cosmic Invasion"]
 
+# Hardcoded skins that are not yet in the API.
+# Each entry: (character_name, skin_id, skin_name)
+_HARDCODED_SKINS: list[tuple[str, str, str]] = [
+    ("Daredevil", "1055800", "Born Again Season 2"),
+]
+
 
 @dataclass
 class SkinInfo:
@@ -101,7 +107,20 @@ class SkinDatabase:
                 )
 
         print(f"[SkinDB] Loaded {len(self.characters)} characters from API")
+        self._apply_hardcoded_skins()
         return True
+
+    def _apply_hardcoded_skins(self) -> None:
+        """Inject skins that are not yet in the API into the database."""
+        for char_name, skin_id, skin_name in _HARDCODED_SKINS:
+            char = self.characters.get(char_name)
+            if char is None:
+                continue
+            # Only add if not already present (API may catch up later)
+            existing_ids = {s.skin_id for s in char.skins}
+            if skin_id not in existing_ids:
+                char.skins.append(SkinInfo(skin_id, skin_name))
+                print(f"[SkinDB] Injected hardcoded skin: {char_name} / {skin_id} ({skin_name})")
 
     # ------------------------------------------------------------------
     # Queries

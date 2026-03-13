@@ -30,6 +30,17 @@ CACHE_DIR = PROJECT_ROOT / "data" / "images"
 MAX_WORKERS = 16
 MAX_CACHED_PX = 256  # pre-resize images on disk so Tk doesn't struggle
 
+# Hardcoded costume entries for skins not yet in the marvelrivalsapi.com API.
+# Each entry: (hero_db_name, costume_dict) where costume_dict uses the same
+# shape as the API response: {"id": str, "icon": url_or_partial_path, ...}
+# Full https:// URLs are passed through as-is by _costume_image_url().
+_HARDCODED_COSTUMES: list[tuple[str, dict]] = [
+    ("Daredevil", {
+        "id": "1055800",
+        "icon": "https://static.wikia.nocookie.net/marvel-rivals/images/0/0e/CosInfo_-_Daredevil_Daredevil_Born_Again_Season_2_Icon.png",
+    }),
+]
+
 
 def _safe(name: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]", "_", name)
@@ -290,7 +301,25 @@ class ImageCache:
                 except Exception:
                     pass
 
-    # -- Phase 3: collect download tasks from cached costumes ----------
+    # -- Phase 3: inject hardcoded costumes ---------------------------
+
+    def inject_hardcoded_costumes(self) -> None:
+        """
+        Merge hardcoded costume entries (for skins not yet in the API)
+        into the in-memory costumes cache so that collect_download_tasks
+        will find their icon URLs and skin_database entries will have images.
+        """
+        with self._lock:
+            for hero_name, costume in _HARDCODED_COSTUMES:
+                if hero_name not in self._costumes_cache:
+                    self._costumes_cache[hero_name] = []
+                costumes = self._costumes_cache[hero_name]
+                existing_ids = {str(c.get("id", "")) for c in costumes}
+                cid = str(costume.get("id", ""))
+                if cid and cid not in existing_ids:
+                    costumes.append(costume)
+
+    # -- Phase 4: collect download tasks from cached costumes ----------
 
     def collect_download_tasks(
         self,
