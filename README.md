@@ -12,7 +12,6 @@ A Marvel Rivals skin changer tool that lets you swap character skins by generati
 - **Auto-packs** with repak-rivals (`.pak` → IOStore)
 - **Auto-deploys** to the game's `~mods` folder
 - **Online skin database** — fetches latest skins from the natimerry API
-- **Offline fallback** — hardcoded Daredevil data works without internet
 
 ## Prerequisites
 
