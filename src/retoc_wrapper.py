@@ -189,9 +189,7 @@ class RetocWrapper:
             output_dir = PROJECT_ROOT / "data" / "extracted" / skin_id
 
         # Use "Marvel/Characters/..." prefix so the filter doesn't
-        # accidentally match VFX paths like
-        #   VFX/Materials/Characters/{charID}/{skinID}/Materials/...
-        # which contain the same substring.
+        # accidentally match other paths that contain the same substring.
         filter_patterns = [
             f"Marvel/Characters/{char_id}/{skin_id}/Meshes",
             f"Marvel/Characters/{char_id}/{skin_id}/Materials",
@@ -226,86 +224,6 @@ class RetocWrapper:
 
         filter_pattern = f"Characters/{char_id}/{skin_id}/Weapons"
         return self._run_extract(filter_pattern, output_dir)
-
-    def extract_skin_blueprints(
-        self,
-        char_id: str,
-        skin_id: str,
-        output_dir: Optional[Path] = None,
-    ) -> ExtractResult:
-        """
-        Extract the skin's ChildBP (and related blueprints).
-
-        The ChildBP is the key asset that drives VFX: it contains
-        Niagara particle system references, VFX mesh bindings, and
-        weapon slot assignments.  By including the source skin's
-        ChildBP in the mod (patched to load at the default path),
-        the game will use the source skin's VFX effects.
-
-        Args:
-            char_id:    Character ID (e.g. "1055")
-            skin_id:    Skin ID (e.g. "1055500")
-            output_dir: Where to place extracted files
-                        (default: data/extracted/{skin_id}_bp)
-
-        Returns:
-            ExtractResult with output_dir on success.
-        """
-        if output_dir is None:
-            output_dir = PROJECT_ROOT / "data" / "extracted" / f"{skin_id}_bp"
-
-        # Extract just the blueprint files by name.
-        # The ChildBP is the critical one — it drives VFX and weapon
-        # slot assignment for the skin.
-        filter_pattern = f"{skin_id}_ChildBP"
-        return self._run_extract(filter_pattern, output_dir)
-
-    def extract_skin_vfx(
-        self,
-        char_id: str,
-        skin_id: str,
-        output_dir: Optional[Path] = None,
-    ) -> ExtractResult:
-        """
-        Extract ALL VFX asset files for a skin from the game.
-
-        VFX assets are spread across several sub-directories:
-        ``Marvel/VFX/{Type}/Characters/{char_id}/{skin_id}/``
-        where Type ∈ {Meshes, Particles, Textures, Materials,
-        DecalAnimation, VAT}.
-
-        Note: Materials uses an extra nesting level:
-        ``VFX/Materials/Characters/{char_id}/Materials/{skin_id}/``
-
-        Args:
-            char_id:    Character ID (e.g. "1055")
-            skin_id:    Skin ID (e.g. "1055500")
-            output_dir: Where to place extracted files
-                        (default: data/extracted/{skin_id}_vfx)
-
-        Returns:
-            ExtractResult with output_dir on success.
-        """
-        if output_dir is None:
-            output_dir = PROJECT_ROOT / "data" / "extracted" / f"{skin_id}_vfx"
-
-        vfx_types = ["Meshes", "Particles", "Textures",
-                      "Materials", "DecalAnimation", "VAT"]
-        filter_patterns = [
-            f"VFX/{vtype}/Characters/{char_id}/{skin_id}"
-            for vtype in vfx_types
-        ]
-        # Materials uses extra nesting: .../Characters/{charID}/Materials/{skinID}
-        filter_patterns.append(
-            f"VFX/Materials/Characters/{char_id}/Materials/{skin_id}"
-        )
-        # Niagara Parameter Collection Instance (NPCI) — skin-specific
-        # colour overrides for VFX.  Located at:
-        #   VFX/Particles/NiagaraParameterCollection/{charID}/NPCI_{skinID}
-        filter_patterns.append(
-            f"NiagaraParameterCollection/{char_id}/NPCI_{skin_id}"
-        )
-        return self._run_extract(filter_patterns, output_dir)
 
     # ------------------------------------------------------------------
     # Pack to IOStore

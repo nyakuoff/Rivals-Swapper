@@ -8,8 +8,7 @@ Pipeline:
     2. Extract default skin files          (retoc to-legacy) for physics assets
     3. Extract weapon files for both       (retoc to-legacy)
        — Meshes, Materials, Textures within each weapon slot
-    4. Extract VFX files for both          (retoc to-legacy) for recolors
-    5. Stage mod directory:
+    4. Stage mod directory:
          a. Copy source files (Meshes/Materials/Textures), rename filenames
             (source_id -> target_id)
          b. Patch name map in .uasset files  (source_id -> target_id)
@@ -17,9 +16,8 @@ Pipeline:
               the asset at the default skin's IoStore path
          c. Include default PhysicsAsset files
          d. Copy weapon files for matching weapon slots (Meshes/Materials/Textures)
-         e. Copy VFX files for overlapping ability folders (recolors)
-    6. Pack into IoStore format             (UAssetTool create_mod_iostore)
-    7. Clean up temp directories
+    5. Pack into IoStore format             (UAssetTool create_mod_iostore)
+    6. Clean up temp directories
 """
 
 import os
@@ -39,7 +37,11 @@ from .uasset_patcher import patch_skin_id_in_uasset
 # These must always be included so the mesh has proper physics.
 # Skeleton files are NOT included — the mesh references its own skeleton
 # internally and the game resolves it from the base paks.
-DEFAULT_PHYSICS_KEYWORDS = ("_PhysicsAsset", "SK_Physics_Death")
+DEFAULT_PHYSICS_KEYWORDS = ("_PhysicsAsset",)
+
+# Files containing any of these keywords are skipped entirely — they are
+# never copied from the source OR the default skin into the mod.
+SKIP_FILE_KEYWORDS = ("SK_Physics_Death", "Lobby_Physics.", "SK_Shell_Lobby", "SK_Lobby_Shell")
 
 
 @dataclass
@@ -136,24 +138,7 @@ class SwapEngine:
             log("  No default weapon files found (may not exist for this character)")
             def_wpn_extract = None
 
-        # -- 4. Extract VFX files for both skins (recolor support) ---------
-        log(f"Extracting source VFX files {source_id}...")
-        src_vfx_extract = self.retoc.extract_skin_vfx(char_id, source_id)
-        if src_vfx_extract.success:
-            log(f"  {src_vfx_extract.files_extracted} VFX files extracted")
-        else:
-            log("  No source VFX files found")
-            src_vfx_extract = None
-
-        log(f"Extracting default VFX files {target_id}...")
-        def_vfx_extract = self.retoc.extract_skin_vfx(char_id, target_id)
-        if def_vfx_extract.success:
-            log(f"  {def_vfx_extract.files_extracted} VFX files extracted")
-        else:
-            log("  No default VFX files found")
-            def_vfx_extract = None
-
-        # -- 5. Stage the mod directory ------------------------------------
+        # -- 4. Stage the mod directory ------------------------------------
         log("Staging mod files...")
         try:
             staging_dir, file_count = self._stage_mod(
@@ -168,12 +153,6 @@ class SwapEngine:
                 default_weapon_dir=(
                     def_wpn_extract.output_dir if def_wpn_extract else None
                 ),
-                source_vfx_dir=(
-                    src_vfx_extract.output_dir if src_vfx_extract else None
-                ),
-                default_vfx_dir=(
-                    def_vfx_extract.output_dir if def_vfx_extract else None
-                ),
                 log=log,
             )
         except Exception as exc:
@@ -182,8 +161,6 @@ class SwapEngine:
                 def_extract.output_dir,
                 src_wpn_extract.output_dir if src_wpn_extract else None,
                 def_wpn_extract.output_dir if def_wpn_extract else None,
-                src_vfx_extract.output_dir if src_vfx_extract else None,
-                def_vfx_extract.output_dir if def_vfx_extract else None,
             )
             return SwapResult(False, error=f"Staging failed: {exc}")
 
@@ -199,8 +176,6 @@ class SwapEngine:
             def_extract.output_dir,
             src_wpn_extract.output_dir if src_wpn_extract else None,
             def_wpn_extract.output_dir if def_wpn_extract else None,
-            src_vfx_extract.output_dir if src_vfx_extract else None,
-            def_vfx_extract.output_dir if def_vfx_extract else None,
             staging_dir,
         )
 
@@ -224,8 +199,6 @@ class SwapEngine:
         target_id: str,
         source_weapon_dir: Optional[Path] = None,
         default_weapon_dir: Optional[Path] = None,
-        source_vfx_dir: Optional[Path] = None,
-        default_vfx_dir: Optional[Path] = None,
         log: LogCallback = _noop_log,
     ) -> tuple[Path, int]:
         """
@@ -271,39 +244,53 @@ class SwapEngine:
         )
         is_retexture = not has_meshes
 
-        # Check if the source extraction contains any texture files.
-        # Many skins (especially mesh-swap skins) have Materials but
-        # NOT a Textures folder — the textures live elsewhere in the
-        # game paks.  When textures are NOT staged we must tell the
-        # patcher to leave T_* / /Textures/ references alone so
-        # materials keep pointing at the source skin's original textures.
-        has_textures = any(
-            "\\Textures\\" in str(f) or "/Textures/" in str(f)
-            for f in source_files
-        )
-        skip_texture_refs = not has_textures
+        # For mesh-swap skins we only stage Meshes/ — Materials and Textures
+        # are left in the base paks so the game uses the source skin's
+        # originals.  We always tell the patcher to skip texture references
+        # for mesh-swap skins since we're not staging any textures.
+        # For retexture-only skins, check whether a Textures folder was
+        # actually extracted so the patcher knows what to do.
+        if is_retexture:
+            has_textures = any(
+                "\\Textures\\" in str(f) or "/Textures/" in str(f)
+                for f in source_files
+            )
+            skip_texture_refs = not has_textures
+        else:
+            skip_texture_refs = True
 
         if is_retexture:
             log("  Retexture-only skin detected (no Meshes folder)")
-        if skip_texture_refs:
-            log("  No Textures folder — texture references will be preserved")
+        else:
+            log("  Mesh-swap skin — only Meshes/ will be staged; Materials/Textures stay in base paks")
 
         for src_path in source_files:
             fname = src_path.name
+
+            # Skip files that should never be included in the mod
+            if any(kw in fname for kw in SKIP_FILE_KEYWORDS):
+                log(f"  Skipping excluded file: {fname}")
+                continue
 
             # Skip physics files from source -- we use default physics
             if any(kw in fname for kw in DEFAULT_PHYSICS_KEYWORDS):
                 log(f"  Skipping source physics file: {fname}")
                 continue
 
+            # For mesh-swap skins, only copy Meshes/ files.
+            # Materials and Textures stay in the base paks and the game
+            # loads them from the source skin's original files.
+            if not is_retexture:
+                src_str = str(src_path).replace("\\", "/")
+                if "/Meshes/" not in src_str:
+                    continue
+
             # Determine the subfolder (Meshes, Materials, Textures, etc.)
             if source_skin_root:
                 try:
                     rel = src_path.relative_to(source_skin_root)
                 except ValueError:
-                    # File is not under the skin root (e.g. a VFX file
-                    # captured by a broad extraction filter).  Skip it —
-                    # VFX files are handled separately in _stage_vfx().
+                    # File is not under the skin root.  Skip it.
                     continue
             else:
                 rel = Path(fname)
@@ -317,7 +304,9 @@ class SwapEngine:
 
             shutil.copy2(str(src_path), str(dst_path))
             if new_name != fname:
-                log(f"  Renamed: {fname} -> {new_name}")
+                log(f"  Staged (renamed): {fname} -> {new_name}")
+            else:
+                log(f"  Staged: {fname}")
 
             # Patch the name map inside .uasset files so that the
             # internal FolderName / object names reference the target
@@ -329,6 +318,7 @@ class SwapEngine:
                     modified = patch_skin_id_in_uasset(
                         dst_path, source_id, target_id,
                         skip_texture_refs=skip_texture_refs,
+                        skip_material_refs=(not is_retexture),
                     )
                     if modified:
                         log(f"  Patched name map: {len(modified)} entries")
@@ -350,6 +340,10 @@ class SwapEngine:
         mesh_dir.mkdir(parents=True, exist_ok=True)
 
         for phys_path in physics_files:
+            # Skip files that should never be included in the mod
+            if any(kw in phys_path.name for kw in SKIP_FILE_KEYWORDS):
+                log(f"  Skipping excluded default file: {phys_path.name}")
+                continue
             dst_path = mesh_dir / phys_path.name
             shutil.copy2(str(phys_path), str(dst_path))
             log(f"  Physics file: {phys_path.name}")
@@ -371,23 +365,6 @@ class SwapEngine:
             log("  Skipping weapon staging: no default weapon files extracted")
         else:
             log("  No weapon files to stage")
-
-        # -- Part 4: VFX recolor files (overlapping ability folders) -------
-        if source_vfx_dir and default_vfx_dir:
-            vfx_count = self._stage_vfx(
-                source_vfx_dir=source_vfx_dir,
-                default_vfx_dir=default_vfx_dir,
-                staging_dir=staging_dir,
-                char_id=char_id,
-                source_id=source_id,
-                target_id=target_id,
-                log=log,
-            )
-            file_count += vfx_count
-        elif source_vfx_dir:
-            log("  Skipping VFX staging: no default VFX files extracted")
-        else:
-            log("  No VFX files to stage")
 
         return staging_dir, file_count
 
@@ -481,6 +458,10 @@ class SwapEngine:
                         continue
 
                     fname = src_path.name
+
+                    # Skip files that should never be included in the mod
+                    if any(kw in fname for kw in SKIP_FILE_KEYWORDS):
+                        continue
 
                     # Skip physics files from source — use default physics
                     if any(kw in fname for kw in DEFAULT_PHYSICS_KEYWORDS):
@@ -592,338 +573,6 @@ class SwapEngine:
         for dirpath, dirnames, _ in os.walk(extract_dir):
             if "Weapons" in dirnames:
                 return Path(dirpath) / "Weapons"
-        return None
-
-    # ------------------------------------------------------------------
-    # VFX recolor staging
-    # ------------------------------------------------------------------
-
-    # VFX sub-directory types under ``Marvel/VFX/``
-    _VFX_TYPES = ("Meshes", "Particles", "Textures", "Materials",
-                  "DecalAnimation", "VAT")
-
-    def _stage_vfx(
-        self,
-        source_vfx_dir: Path,
-        default_vfx_dir: Path,
-        staging_dir: Path,
-        char_id: str,
-        source_id: str,
-        target_id: str,
-        log: LogCallback = _noop_log,
-    ) -> int:
-        """
-        Stage VFX recolor files for overlapping ability subfolders.
-
-        VFX assets are extracted to a tree like::
-
-            {extract_dir}/Marvel/Content/Marvel/VFX/{Type}/Characters/{charID}/{skinID}/{abilityFolder}/...
-
-        For each VFX type (Particles, Materials, Textures, Meshes, etc.)
-        we find ability subfolders (e.g. ``105531``) that exist in BOTH
-        the source and default skins. Only those overlapping subfolders
-        are staged — files from the source skin are placed at the
-        default skin's path so the game loads the recolored VFX.
-
-        Returns the number of files staged.
-        """
-        file_count = 0
-
-        for vfx_type in self._VFX_TYPES:
-            # Find the skin-ID-level directories for this VFX type
-            src_skin_dir = self._find_vfx_skin_dir(
-                source_vfx_dir, vfx_type, char_id, source_id
-            )
-            def_skin_dir = self._find_vfx_skin_dir(
-                default_vfx_dir, vfx_type, char_id, target_id
-            )
-
-            if src_skin_dir is None or def_skin_dir is None:
-                continue
-
-            # Derive the correct staging path from the default's actual
-            # extracted directory structure.  The extraction places files
-            # under  {extract_dir}/Marvel/Content/Marvel/VFX/...  and we
-            # need to reproduce the same tree under staging/.
-            # Find "Marvel/Content" in the default's path to get the
-            # relative game path.
-            target_vfx_base = self._vfx_staging_path(
-                def_skin_dir, default_vfx_dir, staging_dir
-            )
-            if target_vfx_base is None:
-                log(f"  [VFX/{vfx_type}] WARNING: Cannot compute staging path")
-                continue
-
-            # NOTE: We intentionally skip loose files (files directly in
-            # the skin directory, e.g. VFX Bundle meshes, material instances,
-            # textures).  Loose VFX files have skin-specific filenames
-            # (MI_1055500_*, SM_1055500_*, T_1055500_*) that are different
-            # from what the default skin's particles reference.  Renaming
-            # them to the target ID just creates orphan files that nothing
-            # loads.  Only ability-subfolder files (e.g. NS_105531_*)
-            # share ability-based names across skins and are actually
-            # picked up by the default skin's ChildBP.
-
-            # -- Ability subfolders (e.g. 105531) --------------------------
-            # Discover ability subfolders in each
-            src_ability_dirs = self._list_ability_dirs(src_skin_dir)
-            def_ability_dirs = self._list_ability_dirs(def_skin_dir)
-
-            if not src_ability_dirs or not def_ability_dirs:
-                continue
-
-            common = sorted(set(src_ability_dirs.keys()) & set(def_ability_dirs.keys()))
-            source_only = sorted(set(src_ability_dirs.keys()) - set(def_ability_dirs.keys()))
-
-            if not common:
-                continue
-
-            log(f"  VFX/{vfx_type}: overlapping ability folders: {', '.join(common)}")
-            if source_only:
-                log(f"  VFX/{vfx_type}: source-only folders (skipped): {', '.join(source_only)}")
-
-            for ability_name in common:
-                src_ab_dir = src_ability_dirs[ability_name]
-                def_ab_dir = def_ability_dirs[ability_name]
-
-                # Walk all files in the source ability folder (recursively)
-                for src_path in sorted(src_ab_dir.rglob("*")):
-                    if not src_path.is_file():
-                        continue
-                    if src_path.suffix not in (".uasset", ".uexp", ".ubulk"):
-                        continue
-
-                    # Compute the relative path from the source skin dir
-                    # e.g. 105531/NS_105531_Release_01.uasset
-                    rel_from_skin = src_path.relative_to(src_skin_dir)
-
-                    # Build the target path using the already-computed base
-                    # Replace source_id with target_id in the relative path parts
-                    rel_str = str(rel_from_skin).replace(source_id, target_id)
-                    dst_path = target_vfx_base / rel_str
-                    dst_path.parent.mkdir(parents=True, exist_ok=True)
-
-                    # Rename source_id → target_id in filename
-                    new_name = dst_path.name.replace(source_id, target_id)
-                    if new_name != dst_path.name:
-                        dst_path = dst_path.parent / new_name
-
-                    shutil.copy2(str(src_path), str(dst_path))
-
-                    # Patch .uasset name map so IoStore paths point to
-                    # the default skin directory
-                    if dst_path.suffix == ".uasset":
-                        try:
-                            modified = patch_skin_id_in_uasset(
-                                dst_path, source_id, target_id
-                            )
-                            if modified:
-                                log(f"  [VFX/{vfx_type}/{ability_name}] Patched: "
-                                    f"{dst_path.name} ({len(modified)} entries)")
-                        except Exception as exc:
-                            log(f"  [VFX/{vfx_type}/{ability_name}] WARNING: "
-                                f"Patch failed for {dst_path.name}: {exc}")
-
-                    file_count += 1
-
-        # -- NPCI: Niagara Parameter Collection Instance -------------------
-        # NPCI files define per-skin colour overrides for VFX (BaseColor,
-        # SpecColor, etc.).  Located at:
-        #   VFX/Particles/NiagaraParameterCollection/{charID}/NPCI_{skinID}
-        # We rename the source's NPCI to the target's to override the
-        # default VFX colours.  The name map does NOT contain the skin ID
-        # so no binary patching is needed — only a filename rename.
-        npci_count = self._stage_npci(
-            source_vfx_dir=source_vfx_dir,
-            default_vfx_dir=default_vfx_dir,
-            staging_dir=staging_dir,
-            char_id=char_id,
-            source_id=source_id,
-            target_id=target_id,
-            log=log,
-        )
-        file_count += npci_count
-
-        if file_count:
-            log(f"  VFX recolor: {file_count} files staged total")
-        else:
-            log("  No overlapping VFX ability folders found (no recolor files)")
-
-        return file_count
-
-    @staticmethod
-    def _find_vfx_skin_dir(
-        extract_dir: Path,
-        vfx_type: str,
-        char_id: str,
-        skin_id: str,
-    ) -> Optional[Path]:
-        """
-        Find the skin-level directory for a VFX type in an extraction tree.
-
-        Looks for a directory named *skin_id* that sits somewhere below
-        ``VFX/{vfx_type}/Characters/{char_id}/`` in the extraction output.
-
-        Some VFX types use a flat layout::
-
-            VFX/Particles/Characters/1055/1055500/
-
-        while others have an extra nesting level::
-
-            VFX/Materials/Characters/1055/Materials/1055500/
-
-        This method handles both cases by walking the tree and checking
-        that *char_id* appears as an ancestor of the *skin_id* directory.
-        """
-        for dirpath, dirnames, _ in os.walk(extract_dir):
-            p = Path(dirpath)
-            if p.name != skin_id:
-                continue
-            # Verify the path contains the expected VFX type and Characters
-            # hierarchy with the char_id somewhere above.
-            path_str = str(p).replace("\\", "/")
-            if (f"VFX/{vfx_type}/" in path_str
-                    and f"/Characters/{char_id}/" in path_str):
-                return p
-        return None
-
-    @staticmethod
-    def _vfx_staging_path(
-        def_skin_dir: Path,
-        extract_root: Path,
-        staging_dir: Path,
-    ) -> Optional[Path]:
-        """
-        Compute the staging directory for VFX files based on the default
-        skin's actual extracted path.
-
-        The extraction places files under::
-
-            {extract_root}/Marvel/Content/Marvel/VFX/{Type}/.../{skinID}/
-
-        We reproduce the same ``Marvel/Content/...`` tree under *staging_dir*
-        so UAssetTool registers assets at the correct IoStore path.
-
-        Returns the staging path corresponding to the default skin's dir,
-        or None if the path structure can't be parsed.
-        """
-        try:
-            rel = def_skin_dir.relative_to(extract_root)
-        except ValueError:
-            return None
-        return staging_dir / rel
-
-    @staticmethod
-    def _list_ability_dirs(skin_dir: Path) -> dict[str, Path]:
-        """
-        List immediate subdirectories of a VFX skin directory.
-
-        These are "ability folders" like ``105531`` that group VFX assets
-        by ability. Some VFX skin dirs also contain loose files directly
-        (e.g. SM_Bundle meshes); those are individual files and not
-        ability folders, so we only return actual directories.
-
-        Returns a dict mapping folder_name → Path.
-        """
-        result: dict[str, Path] = {}
-        if not skin_dir.is_dir():
-            return result
-        for child in sorted(skin_dir.iterdir()):
-            if child.is_dir():
-                result[child.name] = child
-        return result
-
-    # ------------------------------------------------------------------
-    # NPCI staging (Niagara Parameter Collection Instance)
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _stage_npci(
-        source_vfx_dir: Path,
-        default_vfx_dir: Path,
-        staging_dir: Path,
-        char_id: str,
-        source_id: str,
-        target_id: str,
-        log: LogCallback = _noop_log,
-    ) -> int:
-        """
-        Stage the source skin's NPCI file renamed to the target skin ID.
-
-        NPCI (Niagara Parameter Collection Instance) files define per-skin
-        colour overrides for VFX.  They are located at::
-
-            VFX/Particles/NiagaraParameterCollection/{charID}/NPCI_{skinID}.uasset
-
-        Each NPCI stores ``LinearColor`` values for parameters like
-        ``NPC.Venom.BaseColor`` / ``BaseColor2`` / ``SpecColor``.  By
-        staging the source skin's NPCI with the target skin's filename,
-        all VFX that read from the NPC parameters will automatically
-        use the source skin's colour scheme.
-
-        The NPCI name map does NOT contain the skin ID (the internal
-        object name is just ``NPCI``), so no binary patching is needed.
-        Only the filename needs to be renamed.
-
-        Returns the number of files staged (0, 2, or more).
-        """
-        file_count = 0
-
-        # Locate the source NPCI files
-        src_npci = SwapEngine._find_npci_file(
-            source_vfx_dir, char_id, source_id
-        )
-        if src_npci is None:
-            return 0
-
-        # Compute the staging path.  We need to mirror the game path:
-        #   Marvel/Content/Marvel/VFX/Particles/NiagaraParameterCollection/{charID}/
-        # We derive it from the source file's actual extracted path.
-        npc_dir = src_npci.parent  # .../NiagaraParameterCollection/{charID}/
-        try:
-            rel_dir = npc_dir.relative_to(source_vfx_dir)
-        except ValueError:
-            log("  [VFX/NPCI] WARNING: Cannot compute staging path")
-            return 0
-
-        target_dir = staging_dir / rel_dir
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        # Copy all file extensions (.uasset, .uexp, .ubulk)
-        stem = f"NPCI_{source_id}"
-        target_stem = f"NPCI_{target_id}"
-        for ext in (".uasset", ".uexp", ".ubulk"):
-            src_path = src_npci.parent / f"{stem}{ext}"
-            if src_path.exists():
-                dst_path = target_dir / f"{target_stem}{ext}"
-                shutil.copy2(str(src_path), str(dst_path))
-                file_count += 1
-
-        if file_count:
-            log(f"  VFX/NPCI: staged {src_npci.name} -> {target_stem} "
-                f"({file_count} files)")
-
-        return file_count
-
-    @staticmethod
-    def _find_npci_file(
-        vfx_extract_dir: Path,
-        char_id: str,
-        skin_id: str,
-    ) -> Optional[Path]:
-        """
-        Find the NPCI .uasset file for a skin in a VFX extraction tree.
-
-        Searches for ``NPCI_{skin_id}.uasset`` under the
-        ``NiagaraParameterCollection/{char_id}/`` directory.
-        """
-        target_name = f"NPCI_{skin_id}.uasset"
-        for dirpath, _, filenames in os.walk(vfx_extract_dir):
-            if target_name in filenames:
-                candidate = Path(dirpath) / target_name
-                path_str = str(candidate).replace("\\", "/")
-                if f"NiagaraParameterCollection/{char_id}/" in path_str:
-                    return candidate
         return None
 
     # ------------------------------------------------------------------
