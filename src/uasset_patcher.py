@@ -520,7 +520,25 @@ def _is_self_reference_path(name: str, source_skin_id: str,
     # Full paths containing the skin ID in known asset directories
     # are self-references for this package
     if "/" in name:
-        if "/Meshes/" in name or "/Weapons/" in name or "/VFX/" in name:
+        if "/Meshes/" in name:
+            return True
+        if "/VFX/" in name:
+            return True
+        if "/Weapons/" in name:
+            # Weapon sub-paths must be sub-classified so that skip flags
+            # control the individual asset types.  A weapon MI_ file embeds
+            # texture-parameter paths like /Weapons/Bow/Texture/T_1021501_*
+            # which are IMPORTS and must obey skip_texture_refs, not be
+            # treated as unconditional self-references.
+            if "/Texture/" in name or "/Textures/" in name:
+                return not skip_texture_refs
+            if "/Materials/" in name:
+                return not skip_material_refs
+            if name.endswith("/Texture") or name.endswith("/Textures"):
+                return not skip_texture_refs
+            if name.endswith("/Materials"):
+                return not skip_material_refs
+            # Bare weapon path (mesh file or slot folder) — self-reference
             return True
         # Material paths — skip if materials are not staged
         if "/Materials/" in name and not skip_material_refs:
