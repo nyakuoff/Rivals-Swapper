@@ -1,6 +1,6 @@
 # Rivals Swapper
 
-A Marvel Rivals skin changer tool that lets you swap character skins by generating mod files (`.pak` / `.utoc` / `.ucas`) using **repak-rivals**.
+A Marvel Rivals skin changer tool that lets you swap character skins.
 
 > **Client-side cosmetic only** | does not modify game logic or provide any competitive advantage.
 
@@ -43,14 +43,7 @@ python main.py
 1. Open the app and click **⚙ Settings**
 2. Set **Game Paks Folder** — the directory containing the game's `.pak` files  
    Example: `C:\Program Files (x86)\Steam\steamapps\common\MarvelRivals\MarvelGame\Marvel\Content\Paks`
-3. *(Optional)* Set **Extracted Content** — if you've extracted game files with FModel, point to the output root so the tool can copy real mesh data instead of stubs
-
-## How It Works
-
-1. **Skin Database** pulls character/skin IDs from [rivals.natimerry.com/skins](https://rivals.natimerry.com/skins)
-2. **Swap Engine** mirrors the original folder tree to replace the default skin's mesh files with the chosen skin's meshes
-3. **repak-gui.exe --pack** converts the folder to IOStore format (`.pak` + `.utoc` + `.ucas`) in one automated step — no manual drag-and-drop needed
-4. The final files are copied to the game's `~mods` folder
+3. Set **Marvel Rivals API Key** — get a free key at [marvelrivalsapi.com](https://marvelrivalsapi.com/) and paste it into the API Key field in Settings
 
 > [!NOTE]
 > **AI Disclaimer**: Parts of this project were assisted or written by AI. If that's something you're not comfortable with, no hard feelings, I understand and I don't force anyone to use it. The code may have flaws. If you spot something that could be better, contributions are very welcome. I'm still learning and would appreciate the help.
