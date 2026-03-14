@@ -6,13 +6,31 @@ JSON file.
 """
 
 import json
+import os
+import platform
+import shutil
 from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 
 from ._paths import PROJECT_ROOT
 
-DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "settings.json"
+
+def _user_config_dir() -> Path:
+    """Platform-appropriate user config directory that survives app updates."""
+    if platform.system() == "Windows":
+        base = Path(os.environ.get("APPDATA") or (Path.home() / "AppData" / "Roaming"))
+    else:
+        xdg = os.environ.get("XDG_CONFIG_HOME", "")
+        base = Path(xdg) if xdg else Path.home() / ".config"
+    return base / "RivalsSwapper"
+
+
+# Primary config location — in user data, survives app updates.
+DEFAULT_CONFIG_PATH = _user_config_dir() / "settings.json"
+
+# Legacy location used before v1.1 — auto-migrated on first run.
+_LEGACY_CONFIG_PATH = PROJECT_ROOT / "config" / "settings.json"
 
 
 @dataclass
@@ -58,6 +76,13 @@ class Settings:
 def load_settings(path: Path | str | None = None) -> Settings:
     """Load settings from disk. Returns defaults if file missing."""
     cfg_path = Path(path) if path else DEFAULT_CONFIG_PATH
+    # Auto-migrate from legacy location on first run after an update.
+    if not cfg_path.exists() and _LEGACY_CONFIG_PATH.exists():
+        try:
+            cfg_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(_LEGACY_CONFIG_PATH, cfg_path)
+        except Exception:
+            pass
     if not cfg_path.exists():
         return Settings()
     try:

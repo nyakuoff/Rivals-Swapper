@@ -15,6 +15,7 @@ State:
 from __future__ import annotations
 
 import threading
+import webbrowser
 from pathlib import Path
 from typing import Optional
 
@@ -31,6 +32,7 @@ from .settings import (
     Settings, SwapRecord, load_settings, save_settings,
 )
 from ._paths import PROJECT_ROOT, ASSETS_DIR
+from ._version import __version__, GITHUB_REPO, fetch_latest_release, parse_version
 
 
 # ======================================================================
@@ -234,6 +236,9 @@ class App(ctk.CTk):
         # CTkImage references (prevent GC)
         self._ctk_images: dict[str, ctk.CTkImage] = {}
 
+        # Hero grid filter state
+        self._hero_filter_active = False
+
         # Show loading screen, then start background preload
         self._build_loading_screen()
         threading.Thread(target=self._preload_all, daemon=True).start()
@@ -401,6 +406,7 @@ class App(ctk.CTk):
         self._loading_frame.destroy()
         self._build_shell()
         self._show_hero_grid()
+        threading.Thread(target=self._check_for_update, daemon=True).start()
 
     # ------------------------------------------------------------------
     # CTkImage helper
@@ -448,7 +454,7 @@ class App(ctk.CTk):
 
     def _build_shell(self) -> None:
         # Top bar
-        top = ctk.CTkFrame(self, fg_color=_BG_CARD, corner_radius=0, height=56)
+        top = self._top_bar = ctk.CTkFrame(self, fg_color=_BG_CARD, corner_radius=0, height=56)
         top.pack(fill="x")
         top.pack_propagate(False)
 
@@ -478,6 +484,12 @@ class App(ctk.CTk):
         # Content area
         self.content = ctk.CTkFrame(self, fg_color="transparent")
         self.content.pack(fill="both", expand=True, padx=20, pady=(12, 0))
+
+        # Update notification banner (hidden until an update is detected)
+        self._update_banner = ctk.CTkFrame(
+            self, fg_color="#1a2a1a", corner_radius=0, height=44,
+        )
+        self._update_banner.pack_propagate(False)
 
         # Log panel (hidden by default)
         self._log_visible = False
@@ -523,6 +535,53 @@ class App(ctk.CTk):
             self._toggle_log()
 
     # ------------------------------------------------------------------
+    # Update check
+    # ------------------------------------------------------------------
+
+    def _check_for_update(self) -> None:
+        """Background thread: compare latest GitHub release to current version."""
+        result = fetch_latest_release(GITHUB_REPO)
+        if result is None:
+            return
+        tag, url = result
+        if parse_version(tag) > parse_version(__version__):
+            self.after(0, lambda: self._show_update_banner(tag, url))
+
+    def _show_update_banner(self, tag: str, url: str) -> None:
+        """Insert the update banner between the top bar and content area."""
+        for w in self._update_banner.winfo_children():
+            w.destroy()
+
+        inner = ctk.CTkFrame(self._update_banner, fg_color="transparent")
+        inner.place(relx=0.5, rely=0.5, anchor="center")
+
+        ctk.CTkLabel(
+            inner,
+            text=f"\U0001f514  New version {tag} is available!",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=_GREEN,
+        ).pack(side="left", padx=(0, 14))
+
+        ctk.CTkButton(
+            inner, text="Download", width=110, height=28,
+            fg_color=_GREEN, hover_color=_GREEN_H,
+            text_color="white", corner_radius=8,
+            command=lambda: webbrowser.open(url),
+        ).pack(side="left", padx=4)
+
+        ctk.CTkButton(
+            inner, text="\u2715", width=28, height=28,
+            fg_color="transparent", hover_color=_BG_HOVER,
+            text_color=_TEXT_DIM,
+            command=self._hide_update_banner,
+        ).pack(side="left", padx=(8, 0))
+
+        self._update_banner.pack(after=self._top_bar, fill="x")
+
+    def _hide_update_banner(self) -> None:
+        self._update_banner.pack_forget()
+
+    # ------------------------------------------------------------------
     # Screen 1 — Hero grid
     # ------------------------------------------------------------------
 
@@ -548,6 +607,17 @@ class App(ctk.CTk):
                 text_color=_GREEN,
             ).pack(side="left", padx=8)
 
+        ctk.CTkButton(
+            hdr,
+            text=("\u2714  Active Only" if self._hero_filter_active else "Active Only"),
+            width=120, height=30,
+            fg_color=(_GREEN if self._hero_filter_active else _GREY),
+            hover_color=(_GREEN_H if self._hero_filter_active else _BG_HOVER),
+            text_color=("white" if self._hero_filter_active else _TEXT_DIM),
+            corner_radius=8,
+            command=self._toggle_hero_filter,
+        ).pack(side="right", padx=4)
+
         # Scrollable grid
         scroll = ctk.CTkScrollableFrame(
             self.content, fg_color="transparent",
@@ -559,13 +629,29 @@ class App(ctk.CTk):
             scroll.grid_columnconfigure(c, weight=1)
 
         names = self.db.get_character_names()
-        for i, name in enumerate(names):
+        grid_i = 0
+        for name in names:
             char = self.db.get_character(name)
             if not char:
                 continue
-            r, c = divmod(i, HERO_COLUMNS)
             swap = self.settings.get_swap(char.char_id)
+            if self._hero_filter_active and swap is None:
+                continue
+            r, c = divmod(grid_i, HERO_COLUMNS)
             self._hero_card(scroll, r, c, char, swap)
+            grid_i += 1
+
+        if self._hero_filter_active and grid_i == 0:
+            ctk.CTkLabel(
+                scroll, text="No active swaps.",
+                font=ctk.CTkFont(size=14),
+                text_color=_TEXT_DIM,
+            ).grid(row=0, column=0, pady=30)
+
+    def _toggle_hero_filter(self) -> None:
+        """Toggle the Active Only filter and redraw the hero grid."""
+        self._hero_filter_active = not self._hero_filter_active
+        self._show_hero_grid()
 
     def _hero_card(
         self, parent, row: int, col: int,
