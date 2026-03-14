@@ -9,9 +9,9 @@ A Marvel Rivals skin changer tool that lets you swap character skins.
 ## Features
 
 - **One-click skin swap** — pick a character, pick a skin, press Swap
-- **Auto-packs** with repak-rivals (`.pak` → IOStore)
+- **Auto-packs** with repak-rivals
 - **Auto-deploys** to the game's `~mods` folder
-- **Online skin database** — fetches latest skins from the natimerry API
+- **Online skin database** — fetches skins from the natimerry API
 
 ## Prerequisites
 
@@ -40,7 +40,7 @@ python main.py
 
 ## First-Time Setup
 
-1. Open the app and click **⚙ Settings**
+1. Open the app and open the **Settings**
 2. Set **Game Paks Folder** — the directory containing the game's `.pak` files  
    Example: `C:\Program Files (x86)\Steam\steamapps\common\MarvelRivals\MarvelGame\Marvel\Content\Paks`
 3. Set **Marvel Rivals API Key** — get a free key at [marvelrivalsapi.com](https://marvelrivalsapi.com/) and paste it into the API Key field in Settings
