@@ -1,7 +1,7 @@
 """Application version and GitHub release-check helpers."""
 from __future__ import annotations
 
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 GITHUB_REPO  = "nyakuoff/Rivals-Swapper"
 
 
