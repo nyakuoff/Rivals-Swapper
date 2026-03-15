@@ -32,7 +32,6 @@ config/settings.json
 *.pak
 *.ucas
 *.utoc
-*.usmap
 
 # Tools (binaries — committed to repo for CI reproducibility)
 # tools/
