@@ -14,13 +14,14 @@ State:
 
 from __future__ import annotations
 
+import re
 import threading
 import webbrowser
 from pathlib import Path
 from typing import Optional
 
 import customtkinter as ctk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 from PIL import Image
 
 from .image_cache import ImageCache
@@ -46,9 +47,9 @@ ctk.set_default_color_theme("blue")
 HERO_COLUMNS   = 5
 HERO_CARD_W    = 200
 HERO_CARD_H    = 200
-HERO_IMG_SIZE  = (150, 150)   # portrait thumbnail
+HERO_IMG_SIZE  = (170, 170)   # portrait thumbnail
 SKIN_COLUMNS   = 5
-SKIN_IMG_SIZE  = (120, 120)   # skin card thumbnail
+SKIN_IMG_SIZE  = (140, 140)   # skin card thumbnail
 
 # Colours — dark-gray + yellow accent
 _BG_DARK    = "#121212"
@@ -82,6 +83,36 @@ def _get_placeholder(size: tuple[int, int] = (120, 120)) -> Image.Image:
 
 
 # ======================================================================
+# ------------------------------------------------------------------
+# Auto-detect Marvel Rivals Paks path
+# ------------------------------------------------------------------
+
+def _find_game_paks() -> Optional[Path]:
+    """Try to auto-locate the Marvel Rivals Game Paks folder via Steam."""
+    game_rel = Path("steamapps/common/MarvelRivals/MarvelGame/Marvel/Content/Paks")
+    steam_roots: list[Path] = [
+        Path("C:/Program Files (x86)/Steam"),
+        Path("C:/Program Files/Steam"),
+    ]
+    # Parse Steam's libraryfolders.vdf to discover non-default library paths.
+    for root in list(steam_roots):
+        vdf = root / "steamapps/libraryfolders.vdf"
+        if vdf.exists():
+            try:
+                text = vdf.read_text(encoding="utf-8", errors="ignore")
+                for m in re.finditer(r'"path"\s+"([^"]+)"', text):
+                    raw = m.group(1).replace("\\\\", "\\")
+                    steam_roots.append(Path(raw))
+            except Exception:
+                pass
+            break
+    for root in steam_roots:
+        candidate = root / game_rel
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
 # Settings dialog
 # ======================================================================
 
@@ -91,7 +122,7 @@ class SettingsWindow(ctk.CTkToplevel):
     def __init__(self, master, settings: Settings, on_save=None):
         super().__init__(master)
         self.title("Settings")
-        self.geometry("700x380")
+        self.geometry("820x380")
         self.resizable(False, False)
         self.configure(fg_color=_BG_DARK)
 
@@ -117,7 +148,7 @@ class SettingsWindow(ctk.CTkToplevel):
     def _build_ui(self) -> None:
         pad = {"padx": 18, "pady": 8}
 
-        ctk.CTkLabel(self, text="⚙  Settings",
+        ctk.CTkLabel(self, text="Settings",
                       font=ctk.CTkFont(size=20, weight="bold"),
                       text_color=_TEXT).pack(pady=(18, 10))
 
@@ -137,6 +168,11 @@ class SettingsWindow(ctk.CTkToplevel):
                        fg_color=_ACCENT, hover_color=_ACCENT_H,
                        command=lambda: self._browse(self.paks_var)).grid(
             row=0, column=2, **pad)
+        ctk.CTkButton(frame, text="Auto-detect", width=100,
+                       fg_color=_GREY, hover_color=_BG_HOVER,
+                       text_color=_TEXT,
+                       command=self._auto_detect_path).grid(
+            row=0, column=3, **pad)
 
         self.deploy_var = ctk.BooleanVar(value=self.settings.auto_deploy)
         ctk.CTkCheckBox(frame, text="Auto-deploy to ~mods after packing",
@@ -169,6 +205,18 @@ class SettingsWindow(ctk.CTkToplevel):
         p = filedialog.askdirectory()
         if p:
             var.set(p)
+
+    def _auto_detect_path(self) -> None:
+        path = _find_game_paks()
+        if path:
+            self.paks_var.set(str(path))
+        else:
+            messagebox.showinfo(
+                "Auto-detect",
+                "Could not locate Marvel Rivals automatically.\n"
+                "Please use Browse to select the Paks folder manually.",
+                parent=self,
+            )
 
     def _save(self):
         self.settings.game_paks_dir = self.paks_var.get().strip()
@@ -238,6 +286,7 @@ class App(ctk.CTk):
 
         # Hero grid filter state
         self._hero_filter_active = False
+        self._hero_search_var = ctk.StringVar(value="")
 
         # Show loading screen, then start background preload
         self._build_loading_screen()
@@ -405,6 +454,7 @@ class App(ctk.CTk):
         """Tear down loading screen, build the real UI."""
         self._loading_frame.destroy()
         self._build_shell()
+        self._hero_search_var.trace_add("write", lambda *_: self._filter_hero_cards())
         self._show_hero_grid()
         threading.Thread(target=self._check_for_update, daemon=True).start()
 
@@ -465,7 +515,7 @@ class App(ctk.CTk):
         ).pack(side="left", padx=16)
 
         ctk.CTkButton(
-            top, text="⚙  Settings", width=120, height=34,
+            top, text="Settings", width=120, height=34,
             fg_color="transparent", hover_color=_BG_HOVER,
             border_width=1, border_color=_BORDER,
             text_color=_TEXT,
@@ -473,13 +523,29 @@ class App(ctk.CTk):
         ).pack(side="right", padx=16)
 
         self._log_toggle_btn = ctk.CTkButton(
-            top, text="📋  Log", width=90, height=34,
+            top, text="Log", width=90, height=34,
             fg_color="transparent", hover_color=_BG_HOVER,
             border_width=1, border_color=_BORDER,
             text_color=_TEXT,
             command=self._toggle_log,
         )
         self._log_toggle_btn.pack(side="right", padx=4)
+
+        ctk.CTkButton(
+            top, text="Remove All", width=120, height=34,
+            fg_color="transparent", hover_color=_BG_HOVER,
+            border_width=1, border_color=_BORDER,
+            text_color=_TEXT,
+            command=self._remove_all_swaps,
+        ).pack(side="right", padx=4)
+
+        ctk.CTkButton(
+            top, text="Launch", width=100, height=34,
+            fg_color="transparent", hover_color=_BG_HOVER,
+            border_width=1, border_color=_BORDER,
+            text_color=_TEXT,
+            command=self._launch_game,
+        ).pack(side="right", padx=4)
 
         # Content area
         self.content = ctk.CTkFrame(self, fg_color="transparent")
@@ -618,17 +684,37 @@ class App(ctk.CTk):
             command=self._toggle_hero_filter,
         ).pack(side="right", padx=4)
 
+        search_entry = ctk.CTkEntry(
+            hdr, textvariable=self._hero_search_var,
+            placeholder_text="Search heroes\u2026",
+            width=200, height=30,
+            fg_color=_BG_CARD, border_color=_BORDER,
+            text_color=_TEXT,
+        )
+        search_entry.pack(side="right", padx=(0, 8))
+        if self._hero_search_var.get():
+            self.after(20, search_entry.focus_set)
+
         # Scrollable grid
-        scroll = ctk.CTkScrollableFrame(
+        self._hero_scroll = ctk.CTkScrollableFrame(
             self.content, fg_color="transparent",
             scrollbar_button_color=_BORDER,
             scrollbar_button_hover_color=_ACCENT,
         )
-        scroll.pack(fill="both", expand=True)
+        self._hero_scroll.pack(fill="both", expand=True)
         for c in range(HERO_COLUMNS):
-            scroll.grid_columnconfigure(c, weight=1)
+            self._hero_scroll.grid_columnconfigure(c, weight=1)
+
+        self._populate_hero_cards()
+
+    def _populate_hero_cards(self) -> None:
+        """Clear and repopulate just the hero cards without rebuilding the header."""
+        scroll = self._hero_scroll
+        for w in scroll.winfo_children():
+            w.destroy()
 
         names = self.db.get_character_names()
+        search_text = self._hero_search_var.get().strip().lower()
         grid_i = 0
         for name in names:
             char = self.db.get_character(name)
@@ -637,13 +723,15 @@ class App(ctk.CTk):
             swap = self.settings.get_swap(char.char_id)
             if self._hero_filter_active and swap is None:
                 continue
+            if search_text and search_text not in name.lower():
+                continue
             r, c = divmod(grid_i, HERO_COLUMNS)
             self._hero_card(scroll, r, c, char, swap)
             grid_i += 1
 
-        if self._hero_filter_active and grid_i == 0:
+        if grid_i == 0:
             ctk.CTkLabel(
-                scroll, text="No active swaps.",
+                scroll, text="No heroes found.",
                 font=ctk.CTkFont(size=14),
                 text_color=_TEXT_DIM,
             ).grid(row=0, column=0, pady=30)
@@ -652,6 +740,11 @@ class App(ctk.CTk):
         """Toggle the Active Only filter and redraw the hero grid."""
         self._hero_filter_active = not self._hero_filter_active
         self._show_hero_grid()
+
+    def _filter_hero_cards(self) -> None:
+        """Called by search trace — repopulate cards without rebuilding the header."""
+        if hasattr(self, "_hero_scroll") and self._hero_scroll.winfo_exists():
+            self._populate_hero_cards()
 
     def _hero_card(
         self, parent, row: int, col: int,
@@ -666,7 +759,7 @@ class App(ctk.CTk):
             border_width=1,
             border_color=_ACTIVE_BDG if is_active else _BORDER,
         )
-        card.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
+        card.grid(row=row, column=col, padx=4, pady=6, sticky="ew")
         card.configure(cursor="hand2")
 
         # Portrait image
@@ -777,7 +870,7 @@ class App(ctk.CTk):
             border_width=1,
             border_color=_ACTIVE_BDG if is_active else _BORDER,
         )
-        card.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
+        card.grid(row=row, column=col, padx=4, pady=6, sticky="ew")
 
         # Skin thumbnail
         img_key = self.img_cache.skin_icon_key(char.name, skin.skin_id)
@@ -991,6 +1084,63 @@ class App(ctk.CTk):
 
     def _on_settings_saved(self) -> None:
         self._log("Settings saved.")
+
+    def _launch_game(self) -> None:
+        """Launch Marvel Rivals via Steam URI."""
+        webbrowser.open("steam://run/2767030")
+
+    def _remove_all_swaps(self) -> None:
+        """Prompt the user then delete all active swaps and their mod files."""
+        if self._busy:
+            return
+        count = len(self.settings.active_swaps)
+        if count == 0:
+            self._log("No active swaps to remove.")
+            self._show_log()
+            return
+        if not messagebox.askyesno(
+            "Remove All Swaps",
+            f"Remove all {count} active swap(s) and delete their mod files?",
+        ):
+            return
+        self._busy = True
+        self._show_log()
+        self._log(f"Removing all {count} swap(s)...")
+        threading.Thread(target=self._run_remove_all, daemon=True).start()
+
+    def _run_remove_all(self) -> None:
+        try:
+            removed_files = 0
+            swaps = dict(self.settings.active_swaps)
+            for char_id, swap_data in swaps.items():
+                swap = SwapRecord(**{k: v for k, v in swap_data.items()
+                                     if k in SwapRecord.__dataclass_fields__})
+                for p_str in (swap.pak_path, swap.utoc_path, swap.ucas_path):
+                    if p_str:
+                        p = Path(p_str)
+                        if p.exists():
+                            try:
+                                p.unlink()
+                                removed_files += 1
+                            except OSError as e:
+                                self._log_async(f"  [WARN] {Path(p_str).name}: {e}")
+                if swap.mod_name:
+                    for ext in (".pak", ".utoc", ".ucas"):
+                        p = self.output_dir / f"{swap.mod_name}_9999999_P{ext}"
+                        if p.exists():
+                            try:
+                                p.unlink()
+                                removed_files += 1
+                            except OSError:
+                                pass
+                self.settings.clear_swap(char_id)
+            save_settings(self.settings)
+            self._log_async(f"Done — removed {removed_files} file(s)")
+        except Exception as exc:
+            self._log_async(f"[ERROR] {exc}")
+        finally:
+            self._busy = False
+            self.after(0, self._show_hero_grid)
 
     # ------------------------------------------------------------------
     # Logging
