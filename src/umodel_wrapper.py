@@ -69,12 +69,16 @@ class UModelWrapper:
         """
         Run umodel to export skin icons and hero portraits.
 
+        umodel only accepts one package-wildcard per invocation, so we run
+        it once per mask and consider the overall result successful when at
+        least one run succeeds.
+
         progress_cb(message) is called with status strings during the run.
-        Returns True if umodel exited successfully (rc == 0).
+        Returns True if all umodel invocations exited successfully (rc == 0).
         """
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        cmd = [
+        base_cmd = [
             str(UMODEL_EXE),
             "-export",
             f"-game={_UMODEL_GAME}",
@@ -82,35 +86,41 @@ class UModelWrapper:
             f"-out={self.output_dir}",
             f"-aes=0x{_AES_KEY}",
             "-nooverwrite",      # skip already-exported files
-        ] + _EXPORT_MASKS
+        ]
 
-        if progress_cb:
-            progress_cb(f"Running umodel…\n{' '.join(cmd)}")
+        all_ok = True
+        for i, mask in enumerate(_EXPORT_MASKS, 1):
+            cmd = base_cmd + [mask]
+            if progress_cb:
+                progress_cb(f"[{i}/{len(_EXPORT_MASKS)}] Exporting {mask}…")
 
-        try:
-            proc = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                creationflags=_SUBPROCESS_FLAGS,
-            )
-        except OSError as exc:
-            print(f"[UModel] Failed to launch umodel: {exc}")
-            return False
+            try:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    creationflags=_SUBPROCESS_FLAGS,
+                )
+            except OSError as exc:
+                print(f"[UModel] Failed to launch umodel: {exc}")
+                all_ok = False
+                continue
 
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            line = line.rstrip()
-            if line:
-                print(f"[umodel] {line}")
-                if progress_cb:
-                    progress_cb(line)
+            assert proc.stdout is not None
+            for line in proc.stdout:
+                line = line.rstrip()
+                if line:
+                    print(f"[umodel] {line}")
+                    if progress_cb:
+                        progress_cb(line)
 
-        rc = proc.wait()
-        if rc != 0:
-            print(f"[UModel] umodel exited with code {rc}")
-        return rc == 0
+            rc = proc.wait()
+            if rc != 0:
+                print(f"[UModel] umodel exited with code {rc} for mask {mask!r}")
+                all_ok = False
+
+        return all_ok
 
     # ------------------------------------------------------------------
     # Helpers
