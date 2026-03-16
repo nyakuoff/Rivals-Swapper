@@ -21,6 +21,8 @@ a = Analysis(
         (str(ROOT / 'assets'), 'assets'),
         (str(ROOT / 'tools' / 'retoc'), str(Path('tools') / 'retoc')),
         (str(ROOT / 'tools' / 'uassettool'), str(Path('tools') / 'uassettool')),
+        (str(ROOT / 'tools' / 'umodel'), str(Path('tools') / 'umodel')),
+        (str(ROOT / 'data' / 'game_database.json'), 'data'),
     ],
     hiddenimports=[
         'customtkinter',
