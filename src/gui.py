@@ -26,6 +26,7 @@ from PIL import Image
 
 from .image_cache import ImageCache
 from .skin_database import SkinDatabase, CharacterInfo, SkinInfo
+from .umodel_wrapper import UModelWrapper, UMODEL_OUT
 from .swap_engine import SwapEngine
 from .retoc_wrapper import RetocWrapper
 from .uassettool_wrapper import UAssetToolWrapper
@@ -122,7 +123,7 @@ class SettingsWindow(ctk.CTkToplevel):
     def __init__(self, master, settings: Settings, on_save=None):
         super().__init__(master)
         self.title("Settings")
-        self.geometry("820x380")
+        self.geometry("820x320")
         self.resizable(False, False)
         self.configure(fg_color=_BG_DARK)
 
@@ -181,15 +182,6 @@ class SettingsWindow(ctk.CTkToplevel):
                          fg_color=_ACCENT, hover_color=_ACCENT_H).grid(
             row=1, column=0, columnspan=3, sticky="w", **pad)
 
-        ctk.CTkLabel(frame, text="API Key",
-                      text_color=_TEXT_DIM).grid(
-            row=2, column=0, sticky="w", **pad)
-        self.api_key_var = ctk.StringVar(value=self.settings.api_key)
-        ctk.CTkEntry(frame, textvariable=self.api_key_var,
-                      fg_color=_BG_DARK, border_color=_BORDER,
-                      text_color=_TEXT, show="•").grid(
-            row=2, column=1, columnspan=2, sticky="ew", **pad)
-
         bf = ctk.CTkFrame(self, fg_color="transparent")
         bf.pack(pady=18)
         ctk.CTkButton(bf, text="Save", width=130, height=36,
@@ -221,7 +213,6 @@ class SettingsWindow(ctk.CTkToplevel):
     def _save(self):
         self.settings.game_paks_dir = self.paks_var.get().strip()
         self.settings.auto_deploy = self.deploy_var.get()
-        self.settings.api_key = self.api_key_var.get().strip()
         save_settings(self.settings)
         if self.on_save:
             self.on_save()
@@ -365,86 +356,75 @@ class App(ctk.CTk):
 
     def _preload_all_inner(self) -> None:
         """Inner body of _preload_all — wrapped by _preload_all for safety."""
-        api_key = self.settings.api_key
 
-        # --- Step 1: Skin database (one API call) ---
-        self._set_load_status("Loading skin database…", progress=0.0)
-        ok = self.db.fetch_from_api()
-        if not ok:
-            self._set_load_status("WARNING: Could not reach skin database",
-                                  "Starting with offline data…")
-            self.after(1500, self._finish_loading)
-            return
-
+        # --- Step 1: DB is already loaded (instant, done in __init__) ---
         char_names = self.db.get_character_names()
+        self._set_load_status(f"Loaded {len(char_names)} characters", progress=0.05)
 
-        # --- Build hero + skin data ---
-        heroes = []
-        skin_ids_by_hero: dict[str, list[str]] = {}
-        for name in char_names:
-            char = self.db.get_character(name)
-            if char:
-                heroes.append((name, char.default_skin_id))
-                skins = self.db.get_skins(name)
-                if skins:
-                    skin_ids_by_hero[name] = [s.skin_id for s in skins]
-
-        # --- Step 2: Build slug map (one fast API call) ---
-        self._set_load_status("Resolving hero names…", progress=0.03)
-        self.img_cache.build_slug_map(api_key, char_names)
-
-        # --- Quick-check: skip heavy work if all API-backed portraits are cached ---
-        api_heroes = self.img_cache.get_api_hero_names()
-        all_portraits_cached = all(
-            self.img_cache.has(self.img_cache.hero_portrait_key(name))
-            for name, _ in heroes
-            if name in api_heroes
+        # --- Check if portrait images are already cached ---
+        portraits_cached = sum(
+            1 for n in char_names
+            if self.img_cache.has(self.img_cache.hero_portrait_key(n))
         )
-
-        if all_portraits_cached:
-            # Portraits all present — skin icons are best-effort, go to UI
+        if portraits_cached == len(char_names):
             self._set_load_status("Ready!", progress=1.0)
             self.after(100, self._finish_loading)
             return
 
-        # --- Step 3: Fetch ALL costumes JSON in parallel (~47 API calls) ---
-        self._set_load_status("Fetching costume data…",
-                              f"0 / {len(char_names)}", progress=0.05)
-
-        def _costumes_progress(done: int, total: int) -> None:
-            frac = 0.05 + 0.35 * (done / max(total, 1))
+        # --- Need images: validate game paks path ---
+        paks_dir = self.settings.game_paks_dir
+        if not paks_dir:
             self._set_load_status(
-                "Fetching costume data…",
-                f"{done} / {total} heroes",
+                "Images not cached — set Game Paks Folder in Settings",
+                "Open Settings and point to the Marvel Rivals Paks directory.",
+                progress=1.0,
+            )
+            self.after(2000, self._finish_loading)
+            return
+
+        umodel = UModelWrapper(paks_dir, UMODEL_OUT)
+        problems = umodel.validate()
+        if problems:
+            self._set_load_status(
+                "Cannot export images — check Settings",
+                problems[0],
+                progress=1.0,
+            )
+            self.after(2000, self._finish_loading)
+            return
+
+        # --- Run umodel to export textures ---
+        self._set_load_status("Exporting textures from game files…",
+                              "This may take a minute on first launch.",
+                              progress=0.10)
+
+        def _umodel_cb(line: str) -> None:
+            # Keep the status label updated with umodel progress lines
+            self._set_load_status("Exporting textures…", line[:80], progress=0.10)
+
+        umodel.export_skin_images(progress_cb=_umodel_cb)
+
+        # --- Populate image cache from exported .tga files ---
+        self._set_load_status("Processing exported images…", progress=0.60)
+
+        char_id_to_name = {
+            char.char_id: name
+            for name, char in self.db.characters.items()
+        }
+
+        total_tga = len(umodel.tga_files)
+
+        def _cache_cb(done: int, total: int) -> None:
+            frac = 0.60 + 0.38 * (done / max(total, 1))
+            self._set_load_status(
+                "Processing images…",
+                f"{done} / {total}",
                 progress=frac,
             )
 
-        self.img_cache.fetch_all_costumes(
-            api_key, char_names,
-            progress_callback=_costumes_progress,
+        self.img_cache.populate_from_umodel(
+            UMODEL_OUT, char_id_to_name, progress_cb=_cache_cb
         )
-        self.img_cache.inject_hardcoded_costumes()
-
-        # --- Step 4: Collect + download missing images ---
-        self._set_load_status("Preparing downloads…", progress=0.40)
-        tasks = self.img_cache.collect_download_tasks(heroes, skin_ids_by_hero)
-
-        total_imgs = len(tasks)
-        if total_imgs:
-            self._set_load_status("Downloading images…",
-                                  f"0 / {total_imgs}", progress=0.42)
-
-            def _img_progress(done: int, total: int) -> None:
-                frac = 0.42 + 0.55 * (done / max(total, 1))
-                self._set_load_status(
-                    "Downloading images…",
-                    f"{done} / {total}",
-                    progress=frac,
-                )
-
-            self.img_cache.batch_download_images(
-                tasks, progress_callback=_img_progress,
-            )
 
         # --- Done ---
         self._set_load_status("Ready!", progress=1.0)

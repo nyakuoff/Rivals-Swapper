@@ -1,0 +1,627 @@
+{
+  "version": 1,
+  "characters": {
+    "Adam Warlock": {
+      "char_id": "1046",
+      "default_skin_id": "1046001",
+      "skins": [
+        {
+          "skin_id": "1046001",
+          "skin_name": "Adam Warlock"
+        },
+        {
+          "skin_id": "1046100",
+          "skin_name": "Cosmic Jade"
+        }
+      ]
+    },
+    "Black Widow": {
+      "char_id": "1033",
+      "default_skin_id": "1033001",
+      "skins": [
+        {
+          "skin_id": "1033001",
+          "skin_name": "Black Widow"
+        },
+        {
+          "skin_id": "1033000",
+          "skin_name": "Black Widow"
+        },
+        {
+          "skin_id": "1033100",
+          "skin_name": "Toxin Agent"
+        },
+        {
+          "skin_id": "1033500",
+          "skin_name": "Dressed To Slay"
+        }
+      ]
+    },
+    "Blade": {
+      "char_id": "1044",
+      "default_skin_id": "1044001",
+      "skins": [
+        {
+          "skin_id": "1044001",
+          "skin_name": "Blade"
+        }
+      ]
+    },
+    "Bruce Banner": {
+      "char_id": "1011",
+      "default_skin_id": "1011001",
+      "skins": [
+        {
+          "skin_id": "1011001",
+          "skin_name": "Hero Hulk"
+        },
+        {
+          "skin_id": "1011100",
+          "skin_name": "Mighty G-Bomb"
+        },
+        {
+          "skin_id": "1011500",
+          "skin_name": "Gamma Burst"
+        },
+        {
+          "skin_id": "1011501",
+          "skin_name": "Green Scar"
+        }
+      ]
+    },
+    "Captain America": {
+      "char_id": "1022",
+      "default_skin_id": "1022001",
+      "skins": [
+        {
+          "skin_id": "1022001",
+          "skin_name": "Captain America"
+        },
+        {
+          "skin_id": "1022000",
+          "skin_name": "Original"
+        }
+      ]
+    },
+    "Cloak & Dagger": {
+      "char_id": "1025",
+      "default_skin_id": "1025001",
+      "skins": [
+        {
+          "skin_id": "1025001",
+          "skin_name": "Cloak & Dagger"
+        },
+        {
+          "skin_id": "1025100",
+          "skin_name": "Cyan Yellow"
+        }
+      ]
+    },
+    "Deadpool": {
+      "char_id": "1057",
+      "default_skin_id": "1057001",
+      "skins": [
+        {
+          "skin_id": "1057000",
+          "skin_name": "Deadpool"
+        }
+      ]
+    },
+    "Doctor Strange": {
+      "char_id": "1018",
+      "default_skin_id": "1018001",
+      "skins": [
+        {
+          "skin_id": "1018001",
+          "skin_name": "Doctor Strange"
+        },
+        {
+          "skin_id": "1018100",
+          "skin_name": "Magic Apprentice"
+        },
+        {
+          "skin_id": "1018500",
+          "skin_name": "God Of Magic"
+        }
+      ]
+    },
+    "Emma Frost": {
+      "char_id": "1053",
+      "default_skin_id": "1053001",
+      "skins": [
+        {
+          "skin_id": "1053000",
+          "skin_name": "Emma Frost"
+        }
+      ]
+    },
+    "Groot": {
+      "char_id": "1027",
+      "default_skin_id": "1027001",
+      "skins": [
+        {
+          "skin_id": "1027001",
+          "skin_name": "Groot"
+        },
+        {
+          "skin_id": "1027100",
+          "skin_name": "Abies Algae"
+        },
+        {
+          "skin_id": "1027301",
+          "skin_name": "Yggroot"
+        }
+      ]
+    },
+    "Hawkeye": {
+      "char_id": "1021",
+      "default_skin_id": "1021001",
+      "skins": [
+        {
+          "skin_id": "1021001",
+          "skin_name": "Hawkeye"
+        },
+        {
+          "skin_id": "1021100",
+          "skin_name": "Desert"
+        },
+        {
+          "skin_id": "1021300",
+          "skin_name": "Galactic Protocol"
+        }
+      ]
+    },
+    "Hela": {
+      "char_id": "1024",
+      "default_skin_id": "1024001",
+      "skins": [
+        {
+          "skin_id": "1024001",
+          "skin_name": "Hela"
+        },
+        {
+          "skin_id": "1024100",
+          "skin_name": "Ultimate"
+        },
+        {
+          "skin_id": "1024301",
+          "skin_name": "Queen Of The Stars"
+        }
+      ]
+    },
+    "Human Torch": {
+      "char_id": "1017",
+      "default_skin_id": "1017001",
+      "skins": [
+        {
+          "skin_id": "1017001",
+          "skin_name": "Human Torch"
+        }
+      ]
+    },
+    "Iron Fist": {
+      "char_id": "1052",
+      "default_skin_id": "1052001",
+      "skins": [
+        {
+          "skin_id": "1052000",
+          "skin_name": "Lin Lie"
+        }
+      ]
+    },
+    "Iron Man": {
+      "char_id": "1034",
+      "default_skin_id": "1034001",
+      "skins": [
+        {
+          "skin_id": "1034001",
+          "skin_name": "Iron Man"
+        },
+        {
+          "skin_id": "1034000",
+          "skin_name": "Iron Man"
+        },
+        {
+          "skin_id": "1034100",
+          "skin_name": "Armor Model 42"
+        },
+        {
+          "skin_id": "1034500",
+          "skin_name": "1872: Steam Power"
+        }
+      ]
+    },
+    "Jeff The Land Shark": {
+      "char_id": "1047",
+      "default_skin_id": "1047001",
+      "skins": [
+        {
+          "skin_id": "1047100",
+          "skin_name": "Adopted Avenger"
+        }
+      ]
+    },
+    "Loki": {
+      "char_id": "1016",
+      "default_skin_id": "1016001",
+      "skins": [
+        {
+          "skin_id": "1016001",
+          "skin_name": "Loki"
+        },
+        {
+          "skin_id": "1016100",
+          "skin_name": "Frost Giant"
+        },
+        {
+          "skin_id": "1016500",
+          "skin_name": "Senator"
+        }
+      ]
+    },
+    "Luna Snow": {
+      "char_id": "1031",
+      "default_skin_id": "1031001",
+      "skins": [
+        {
+          "skin_id": "1031001",
+          "skin_name": "Luna Snow"
+        },
+        {
+          "skin_id": "1031100",
+          "skin_name": "Minty Beats"
+        }
+      ]
+    },
+    "Magik": {
+      "char_id": "1029",
+      "default_skin_id": "1029001",
+      "skins": [
+        {
+          "skin_id": "1029001",
+          "skin_name": "Magik"
+        },
+        {
+          "skin_id": "1029100",
+          "skin_name": "Amethyst Armor"
+        }
+      ]
+    },
+    "Magneto": {
+      "char_id": "1037",
+      "default_skin_id": "1037001",
+      "skins": [
+        {
+          "skin_id": "1037001",
+          "skin_name": "Magneto"
+        },
+        {
+          "skin_id": "1037100",
+          "skin_name": "Uncanny Blacksteel"
+        }
+      ]
+    },
+    "Mantis": {
+      "char_id": "1020",
+      "default_skin_id": "1020001",
+      "skins": [
+        {
+          "skin_id": "1020001",
+          "skin_name": "Mantis"
+        },
+        {
+          "skin_id": "1020100",
+          "skin_name": "Knowhere Corp"
+        },
+        {
+          "skin_id": "1020300",
+          "skin_name": "Imperial Protocol: Galactic Wings"
+        },
+        {
+          "skin_id": "1020800",
+          "skin_name": "Guardians Of The Galaxy Vol. 3"
+        }
+      ]
+    },
+    "Mister Fantastic": {
+      "char_id": "1040",
+      "default_skin_id": "1040001",
+      "skins": [
+        {
+          "skin_id": "1040001",
+          "skin_name": "Mister Fantastic"
+        },
+        {
+          "skin_id": "1040000",
+          "skin_name": "Rubber Man"
+        }
+      ]
+    },
+    "Moon Knight": {
+      "char_id": "1030",
+      "default_skin_id": "1030001",
+      "skins": [
+        {
+          "skin_id": "1030001",
+          "skin_name": "Moon Knight"
+        },
+        {
+          "skin_id": "1030100",
+          "skin_name": "Moon Knight"
+        },
+        {
+          "skin_id": "1030500",
+          "skin_name": "Mister Knight"
+        },
+        {
+          "skin_id": "1030800",
+          "skin_name": "Fist Of Vengeance"
+        }
+      ]
+    },
+    "Namor": {
+      "char_id": "1045",
+      "default_skin_id": "1045001",
+      "skins": [
+        {
+          "skin_id": "1045001",
+          "skin_name": "Namor"
+        },
+        {
+          "skin_id": "1045100",
+          "skin_name": "Mauve Sub-Mariner"
+        }
+      ]
+    },
+    "Peni Parker": {
+      "char_id": "1042",
+      "default_skin_id": "1042001",
+      "skins": [
+        {
+          "skin_id": "1042001",
+          "skin_name": "Peni Parker"
+        },
+        {
+          "skin_id": "1042000",
+          "skin_name": "Sp//dr: Attack"
+        },
+        {
+          "skin_id": "1042100",
+          "skin_name": "Verdant"
+        }
+      ]
+    },
+    "Rocket Raccoon": {
+      "char_id": "1023",
+      "default_skin_id": "1023001",
+      "skins": [
+        {
+          "skin_id": "1023001",
+          "skin_name": "Rocket Raccoon"
+        },
+        {
+          "skin_id": "1023100",
+          "skin_name": "Toy Wars"
+        },
+        {
+          "skin_id": "1023300",
+          "skin_name": "1872: Bounty Hunter"
+        },
+        {
+          "skin_id": "1023801",
+          "skin_name": "Guardians Of The Galaxy Vol. 3"
+        }
+      ]
+    },
+    "Scarlet Witch": {
+      "char_id": "1038",
+      "default_skin_id": "1038001",
+      "skins": [
+        {
+          "skin_id": "1038001",
+          "skin_name": "Scarlet Witch"
+        },
+        {
+          "skin_id": "1038100",
+          "skin_name": "White Witch"
+        },
+        {
+          "skin_id": "1038101",
+          "skin_name": "Nyx Weaver"
+        },
+        {
+          "skin_id": "1038800",
+          "skin_name": "Chaos Witch"
+        }
+      ]
+    },
+    "Spider-Man": {
+      "char_id": "1036",
+      "default_skin_id": "1036001",
+      "skins": [
+        {
+          "skin_id": "1036001",
+          "skin_name": "Spider-Man"
+        },
+        {
+          "skin_id": "1036000",
+          "skin_name": "Spider-Man"
+        },
+        {
+          "skin_id": "1036100",
+          "skin_name": "Scarlet Spider"
+        },
+        {
+          "skin_id": "1036500",
+          "skin_name": "2099: Spider-Punk"
+        },
+        {
+          "skin_id": "1036800",
+          "skin_name": "Iron Spider"
+        }
+      ]
+    },
+    "Squirrel Girl": {
+      "char_id": "1032",
+      "default_skin_id": "1032001",
+      "skins": [
+        {
+          "skin_id": "1032001",
+          "skin_name": "Squirrel Girl"
+        },
+        {
+          "skin_id": "1032000",
+          "skin_name": "Squirrel Girl"
+        },
+        {
+          "skin_id": "1032100",
+          "skin_name": "Arctic Lemmus"
+        },
+        {
+          "skin_id": "1032300",
+          "skin_name": "Acorn Punk"
+        }
+      ]
+    },
+    "Star-Lord": {
+      "char_id": "1043",
+      "default_skin_id": "1043001",
+      "skins": [
+        {
+          "skin_id": "1043001",
+          "skin_name": "Star-Lord"
+        },
+        {
+          "skin_id": "1043000",
+          "skin_name": "Guardian Of The Galaxy"
+        },
+        {
+          "skin_id": "1043100",
+          "skin_name": "Lord Of Saturn"
+        },
+        {
+          "skin_id": "1043500",
+          "skin_name": "Master Of The Sun"
+        }
+      ]
+    },
+    "Storm": {
+      "char_id": "1015",
+      "default_skin_id": "1015001",
+      "skins": [
+        {
+          "skin_id": "1015001",
+          "skin_name": "Storm"
+        },
+        {
+          "skin_id": "1015100",
+          "skin_name": "Ivory Breeze"
+        },
+        {
+          "skin_id": "1015500",
+          "skin_name": "Punk Storm"
+        }
+      ]
+    },
+    "The Punisher": {
+      "char_id": "1014",
+      "default_skin_id": "1014001",
+      "skins": [
+        {
+          "skin_id": "1014001",
+          "skin_name": "The Punisher"
+        },
+        {
+          "skin_id": "1014100",
+          "skin_name": "Camouflage"
+        },
+        {
+          "skin_id": "1014500",
+          "skin_name": "Thunderbolts"
+        }
+      ]
+    },
+    "The Thing": {
+      "char_id": "1051",
+      "default_skin_id": "1051001",
+      "skins": [
+        {
+          "skin_id": "1051000",
+          "skin_name": "The Thing"
+        }
+      ]
+    },
+    "Thor": {
+      "char_id": "1039",
+      "default_skin_id": "1039001",
+      "skins": [
+        {
+          "skin_id": "1039001",
+          "skin_name": "Thor"
+        },
+        {
+          "skin_id": "1039000",
+          "skin_name": "Thor"
+        },
+        {
+          "skin_id": "1039100",
+          "skin_name": "Midgard Umber"
+        },
+        {
+          "skin_id": "1039500",
+          "skin_name": "Herald Of Thunder"
+        },
+        {
+          "skin_id": "1039800",
+          "skin_name": "Love And Thunder"
+        }
+      ]
+    },
+    "Ultron": {
+      "char_id": "1028",
+      "default_skin_id": "1028001",
+      "skins": [
+        {
+          "skin_id": "1028001",
+          "skin_name": "Ultron"
+        },
+        {
+          "skin_id": "1028000",
+          "skin_name": "Ultron"
+        }
+      ]
+    },
+    "Venom": {
+      "char_id": "1035",
+      "default_skin_id": "1035001",
+      "skins": [
+        {
+          "skin_id": "1035001",
+          "skin_name": "Venom"
+        },
+        {
+          "skin_id": "1035000",
+          "skin_name": "Venom"
+        },
+        {
+          "skin_id": "1035100",
+          "skin_name": "Cyan Clash"
+        },
+        {
+          "skin_id": "1035101",
+          "skin_name": "Anti-Venom"
+        }
+      ]
+    },
+    "Winter Soldier": {
+      "char_id": "1041",
+      "default_skin_id": "1041001",
+      "skins": [
+        {
+          "skin_id": "1041001",
+          "skin_name": "Winter Soldier"
+        }
+      ]
+    }
+  }
+}

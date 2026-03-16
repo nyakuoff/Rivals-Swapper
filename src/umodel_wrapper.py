@@ -1,0 +1,122 @@
+"""
+umodel wrapper for MR-SkinChanger.
+
+Exports skin icon and hero portrait textures from Marvel Rivals .pak files
+using umodel_64.exe, writing .tga files to an output directory that
+ImageCache.populate_from_umodel() then converts into the disk cache.
+"""
+
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+from typing import Callable, Optional
+
+from ._paths import TOOLS_DIR, PROJECT_ROOT
+
+UMODEL_EXE   = TOOLS_DIR / "umodel" / "umodel_64.exe"
+_AES_KEY     = "0C263D8C22DCB085894899C3A3796383E9BF9DE0CBFB08C9BF2DEF2E84F29D74"
+_UMODEL_GAME = "ue5.3"
+UMODEL_OUT   = PROJECT_ROOT / "data" / "umodel_out"
+
+# Hide console window when launching subprocesses on Windows
+_SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+
+# umodel package masks — these match any .uasset whose name starts with the prefix
+_EXPORT_MASKS = [
+    "img_skin_*",
+    "img_heroportrait_*",
+]
+
+
+class UModelWrapper:
+    """Wraps umodel_64.exe to export skin/portrait textures from game paks."""
+
+    def __init__(
+        self,
+        game_paks_dir: str | Path,
+        output_dir: str | Path = UMODEL_OUT,
+    ) -> None:
+        self.game_paks_dir = Path(game_paks_dir)
+        self.output_dir    = Path(output_dir)
+
+    # ------------------------------------------------------------------
+    # Public interface
+    # ------------------------------------------------------------------
+
+    def validate(self) -> list[str]:
+        """
+        Return a list of human-readable problems.
+        An empty list means we're ready to run.
+        """
+        problems: list[str] = []
+        if not UMODEL_EXE.exists():
+            problems.append(f"umodel not found: {UMODEL_EXE}")
+        if not self.game_paks_dir.exists():
+            problems.append(f"Game Paks folder not found: {self.game_paks_dir}")
+        elif not any(self.game_paks_dir.glob("*.pak")):
+            problems.append(
+                f"No .pak files found in: {self.game_paks_dir}\n"
+                "Make sure the Game Paks Folder is set correctly in Settings."
+            )
+        return problems
+
+    def export_skin_images(
+        self,
+        progress_cb: Optional[Callable[[str], None]] = None,
+    ) -> bool:
+        """
+        Run umodel to export skin icons and hero portraits.
+
+        progress_cb(message) is called with status strings during the run.
+        Returns True if umodel exited successfully (rc == 0).
+        """
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        cmd = [
+            str(UMODEL_EXE),
+            "-export",
+            f"-game={_UMODEL_GAME}",
+            f"-path={self.game_paks_dir}",
+            f"-out={self.output_dir}",
+            f"-aes=0x{_AES_KEY}",
+            "-nooverwrite",      # skip already-exported files
+        ] + _EXPORT_MASKS
+
+        if progress_cb:
+            progress_cb(f"Running umodel…\n{' '.join(cmd)}")
+
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                creationflags=_SUBPROCESS_FLAGS,
+            )
+        except OSError as exc:
+            print(f"[UModel] Failed to launch umodel: {exc}")
+            return False
+
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            line = line.rstrip()
+            if line:
+                print(f"[umodel] {line}")
+                if progress_cb:
+                    progress_cb(line)
+
+        rc = proc.wait()
+        if rc != 0:
+            print(f"[UModel] umodel exited with code {rc}")
+        return rc == 0
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @property
+    def tga_files(self) -> list[Path]:
+        """All .tga files already present in the output directory."""
+        return list(self.output_dir.rglob("*.tga"))
