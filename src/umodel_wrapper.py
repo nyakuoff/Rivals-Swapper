@@ -8,6 +8,7 @@ ImageCache.populate_from_umodel() then converts into the disk cache.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -22,6 +23,11 @@ UMODEL_OUT   = PROJECT_ROOT / "data" / "umodel_out"
 
 # Hide console window when launching subprocesses on Windows
 _SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
+
+def _to_wine_path(path: Path) -> str:
+    """Convert an absolute Linux path to a Wine Windows path (Z:\\...)."""
+    return "Z:" + str(path).replace("/", "\\")
+
 
 # umodel package masks — these match any .uasset whose name starts with the prefix
 _EXPORT_MASKS = [
@@ -53,6 +59,11 @@ class UModelWrapper:
         problems: list[str] = []
         if not UMODEL_EXE.exists():
             problems.append(f"umodel not found: {UMODEL_EXE}")
+        if sys.platform != "win32" and shutil.which("wine") is None:
+            problems.append(
+                "wine is not installed or not in PATH.\n"
+                "Install Wine to run umodel on Linux (e.g. sudo dnf install wine)."
+            )
         if not self.game_paks_dir.exists():
             problems.append(f"Game Paks folder not found: {self.game_paks_dir}")
         elif not any(self.game_paks_dir.glob("*.pak")):
@@ -78,12 +89,23 @@ class UModelWrapper:
         """
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+        # On Linux, run the Windows .exe through Wine and convert paths
+        if sys.platform == "win32":
+            exe_prefix = []
+            paks_path  = str(self.game_paks_dir)
+            out_path   = str(self.output_dir)
+        else:
+            exe_prefix = ["wine"]
+            paks_path  = _to_wine_path(self.game_paks_dir)
+            out_path   = _to_wine_path(self.output_dir)
+
         base_cmd = [
+            *exe_prefix,
             str(UMODEL_EXE),
             "-export",
             f"-game={_UMODEL_GAME}",
-            f"-path={self.game_paks_dir}",
-            f"-out={self.output_dir}",
+            f"-path={paks_path}",
+            f"-out={out_path}",
             f"-aes=0x{_AES_KEY}",
             "-nooverwrite",      # skip already-exported files
         ]
@@ -133,7 +155,6 @@ class UModelWrapper:
 
     def cleanup_output(self) -> None:
         """Delete the umodel output directory after TGAs have been cached."""
-        import shutil
         if self.output_dir.exists():
             shutil.rmtree(self.output_dir, ignore_errors=True)
             print(f"[UModel] cleaned up {self.output_dir}")
