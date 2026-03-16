@@ -426,6 +426,9 @@ class App(ctk.CTk):
             UMODEL_OUT, char_id_to_name, progress_cb=_cache_cb
         )
 
+        # --- Clean up raw TGA exports (no longer needed after caching) ---
+        umodel.cleanup_output()
+
         # --- Done ---
         self._set_load_status("Ready!", progress=1.0)
         self.after(250, self._finish_loading)

@@ -130,3 +130,10 @@ class UModelWrapper:
     def tga_files(self) -> list[Path]:
         """All .tga files already present in the output directory."""
         return list(self.output_dir.rglob("*.tga"))
+
+    def cleanup_output(self) -> None:
+        """Delete the umodel output directory after TGAs have been cached."""
+        import shutil
+        if self.output_dir.exists():
+            shutil.rmtree(self.output_dir, ignore_errors=True)
+            print(f"[UModel] cleaned up {self.output_dir}")
