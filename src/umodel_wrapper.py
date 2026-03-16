@@ -15,9 +15,9 @@ from typing import Callable, Optional
 
 from ._paths import TOOLS_DIR, PROJECT_ROOT
 
-UMODEL_EXE   = TOOLS_DIR / "umodel" / "umodel_64.exe"
+UMODEL_EXE   = TOOLS_DIR / "umodel" / "umodel_materials_ue5.exe"
 _AES_KEY     = "0C263D8C22DCB085894899C3A3796383E9BF9DE0CBFB08C9BF2DEF2E84F29D74"
-_UMODEL_GAME = "ue5.3"
+_UMODEL_GAME = "marv"
 UMODEL_OUT   = PROJECT_ROOT / "data" / "umodel_out"
 
 # Hide console window when launching subprocesses on Windows
