@@ -5,10 +5,6 @@ on:
     tags:
       - "v*"
   workflow_dispatch:
-    inputs:
-      tag_name:
-        description: "Release tag (e.g. v1.0.0)"
-        required: true
 
 permissions:
   contents: write
@@ -101,6 +97,8 @@ jobs:
     needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
@@ -116,11 +114,8 @@ jobs:
       - name: Determine tag
         id: tag
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "TAG_NAME=${{ inputs.tag_name }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-          fi
+          VERSION=$(python -c 'import sys; sys.path.insert(0, "src"); from _version import __version__; print(__version__)')
+          echo "TAG_NAME=v${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

@@ -1,0 +1,1959 @@
+{
+  "version": 1,
+  "characters": {
+    "Adam Warlock": {
+      "char_id": "1046",
+      "default_skin_id": "1046001",
+      "skins": [
+        {
+          "skin_id": "1046001",
+          "skin_name": "Adam Warlock"
+        },
+        {
+          "skin_id": "1046100",
+          "skin_name": "Cosmic Jade"
+        },
+        {
+          "skin_id": "1046101",
+          "skin_name": "Will Of Galacta"
+        },
+        {
+          "skin_id": "1046102",
+          "skin_name": "King In White"
+        },
+        {
+          "skin_id": "1046300",
+          "skin_name": "Immortal Avatar"
+        },
+        {
+          "skin_id": "1046301",
+          "skin_name": "Blood Soul"
+        },
+        {
+          "skin_id": "1046302",
+          "skin_name": "Cosmic Warlock"
+        },
+        {
+          "skin_id": "1046500",
+          "skin_name": "Magus"
+        },
+        {
+          "skin_id": "1046800",
+          "skin_name": "Guardians Of The Galaxy Vol. 3"
+        }
+      ]
+    },
+    "Angela": {
+      "char_id": "1056",
+      "default_skin_id": "1056001",
+      "skins": [
+        {
+          "skin_id": "1056001",
+          "skin_name": "Angela"
+        },
+        {
+          "skin_id": "1056100",
+          "skin_name": "Cerulean Lightbringer"
+        },
+        {
+          "skin_id": "1056101",
+          "skin_name": "Siriana's Silver"
+        },
+        {
+          "skin_id": "1056300",
+          "skin_name": "Ace Of Spades"
+        },
+        {
+          "skin_id": "1056500",
+          "skin_name": "Skuld 2099"
+        },
+        {
+          "skin_id": "1056501",
+          "skin_name": "Odin's Beautiful Daughter"
+        }
+      ]
+    },
+    "Black Panther": {
+      "char_id": "1026",
+      "default_skin_id": "1026001",
+      "skins": [
+        {
+          "skin_id": "1026001",
+          "skin_name": "Black Panther"
+        },
+        {
+          "skin_id": "1026100",
+          "skin_name": "Orisha Blood"
+        },
+        {
+          "skin_id": "1026101",
+          "skin_name": "Golden Panther"
+        },
+        {
+          "skin_id": "1026300",
+          "skin_name": "Galactic Protocol"
+        },
+        {
+          "skin_id": "1026301",
+          "skin_name": "Thrice-Cursed King"
+        },
+        {
+          "skin_id": "1026302",
+          "skin_name": "Phoenix Panther"
+        },
+        {
+          "skin_id": "1026500",
+          "skin_name": "Bast's Chosen"
+        },
+        {
+          "skin_id": "1026501",
+          "skin_name": "Damisa-Sarki"
+        },
+        {
+          "skin_id": "1026502",
+          "skin_name": "King Of Wakanda"
+        }
+      ]
+    },
+    "Black Widow": {
+      "char_id": "1033",
+      "default_skin_id": "1033001",
+      "skins": [
+        {
+          "skin_id": "1033001",
+          "skin_name": "Black Widow"
+        },
+        {
+          "skin_id": "1033000",
+          "skin_name": "Black Widow"
+        },
+        {
+          "skin_id": "1033100",
+          "skin_name": "Lethal Toxicity"
+        },
+        {
+          "skin_id": "1033300",
+          "skin_name": "Lion's Heartbeat"
+        },
+        {
+          "skin_id": "1033500",
+          "skin_name": "Dressed To Slay"
+        },
+        {
+          "skin_id": "1033501",
+          "skin_name": "Mrs. Barnes"
+        },
+        {
+          "skin_id": "1033502",
+          "skin_name": "Phoenix Widow"
+        },
+        {
+          "skin_id": "1033503",
+          "skin_name": "Midnight Suspense"
+        },
+        {
+          "skin_id": "1033800",
+          "skin_name": "White Suit"
+        }
+      ]
+    },
+    "Blade": {
+      "char_id": "1044",
+      "default_skin_id": "1044001",
+      "skins": [
+        {
+          "skin_id": "1044001",
+          "skin_name": "Blade"
+        },
+        {
+          "skin_id": "1044100",
+          "skin_name": "Daybreak"
+        },
+        {
+          "skin_id": "1044101",
+          "skin_name": "Will Of Galacta"
+        },
+        {
+          "skin_id": "1044102",
+          "skin_name": "Emerald Blade"
+        },
+        {
+          "skin_id": "1044300",
+          "skin_name": "Polarity Edge"
+        },
+        {
+          "skin_id": "1044301",
+          "skin_name": "Vampire Slayer"
+        },
+        {
+          "skin_id": "1044500",
+          "skin_name": "Restful Recovery"
+        },
+        {
+          "skin_id": "1044800",
+          "skin_name": "Blade Knight"
+        }
+      ]
+    },
+    "Captain America": {
+      "char_id": "1022",
+      "default_skin_id": "1022001",
+      "skins": [
+        {
+          "skin_id": "1022001",
+          "skin_name": "Captain America"
+        },
+        {
+          "skin_id": "1022000",
+          "skin_name": "Original"
+        },
+        {
+          "skin_id": "1022100",
+          "skin_name": "Captain A.i.m.erica"
+        },
+        {
+          "skin_id": "1022300",
+          "skin_name": "Galactic Talon"
+        },
+        {
+          "skin_id": "1022301",
+          "skin_name": "Cursed Captain"
+        },
+        {
+          "skin_id": "1022500",
+          "skin_name": "Captain Gladiator"
+        },
+        {
+          "skin_id": "1022501",
+          "skin_name": "Star Spangled Style"
+        },
+        {
+          "skin_id": "1022502",
+          "skin_name": "Captain Klyntar"
+        },
+        {
+          "skin_id": "1022503",
+          "skin_name": "Golden Age"
+        },
+        {
+          "skin_id": "1022504",
+          "skin_name": "Capwolf"
+        },
+        {
+          "skin_id": "1022801",
+          "skin_name": "Avengers: Infinity War"
+        }
+      ]
+    },
+    "Cloak & Dagger": {
+      "char_id": "1025",
+      "default_skin_id": "1025001",
+      "skins": [
+        {
+          "skin_id": "1025001",
+          "skin_name": "Cloak & Dagger"
+        },
+        {
+          "skin_id": "1025100",
+          "skin_name": "Lemon Lime"
+        },
+        {
+          "skin_id": "1025300",
+          "skin_name": "Dance Partner"
+        },
+        {
+          "skin_id": "1025301",
+          "skin_name": "Twilight Duo"
+        },
+        {
+          "skin_id": "1025302",
+          "skin_name": "Polarity Bond"
+        },
+        {
+          "skin_id": "1025303",
+          "skin_name": "Ice Pas De Deux"
+        },
+        {
+          "skin_id": "1025500",
+          "skin_name": "Growth & Decay"
+        }
+      ]
+    },
+    "Daredevil": {
+      "char_id": "1055",
+      "default_skin_id": "1055001",
+      "skins": [
+        {
+          "skin_id": "1055001",
+          "skin_name": "Daredevil"
+        },
+        {
+          "skin_id": "1055100",
+          "skin_name": "Fearless Origin"
+        },
+        {
+          "skin_id": "1055101",
+          "skin_name": "Shenloong's Creed"
+        },
+        {
+          "skin_id": "1055102",
+          "skin_name": "Aurora Twilight"
+        },
+        {
+          "skin_id": "1055500",
+          "skin_name": "Devil 2099"
+        },
+        {
+          "skin_id": "1055501",
+          "skin_name": "Not Daredevil"
+        },
+        {
+          "skin_id": "1055800",
+          "skin_name": "Daredevil: Born Again Season 2"
+        }
+      ]
+    },
+    "Deadpool": {
+      "char_id": "1057",
+      "default_skin_id": "1057001",
+      "skins": [
+        {
+          "skin_id": "1057001",
+          "skin_name": "Deadpool"
+        },
+        {
+          "skin_id": "1057000",
+          "skin_name": "Deadpool"
+        },
+        {
+          "skin_id": "1057100",
+          "skin_name": "X-Force?"
+        },
+        {
+          "skin_id": "1057101",
+          "skin_name": "Workwear Woes"
+        },
+        {
+          "skin_id": "1057300",
+          "skin_name": "Captain Pool"
+        }
+      ]
+    },
+    "Doctor Strange": {
+      "char_id": "1018",
+      "default_skin_id": "1018001",
+      "skins": [
+        {
+          "skin_id": "1018001",
+          "skin_name": "Doctor Strange"
+        },
+        {
+          "skin_id": "1018100",
+          "skin_name": "Master Of Black Magic"
+        },
+        {
+          "skin_id": "1018101",
+          "skin_name": "Astral Wanderer"
+        },
+        {
+          "skin_id": "1018300",
+          "skin_name": "Sorcerer Immortal"
+        },
+        {
+          "skin_id": "1018301",
+          "skin_name": "Old Man Strange"
+        },
+        {
+          "skin_id": "1018302",
+          "skin_name": "Bleeker Street Strut"
+        },
+        {
+          "skin_id": "1018303",
+          "skin_name": "Phantom Sorcerer"
+        },
+        {
+          "skin_id": "1018500",
+          "skin_name": "God Of Magic"
+        },
+        {
+          "skin_id": "1018501",
+          "skin_name": "Sorcerer Supreme Of The Galaxy"
+        },
+        {
+          "skin_id": "1018800",
+          "skin_name": "Doctor Strange In The Multiverse Of Madness"
+        }
+      ]
+    },
+    "Elsa Bloodstone": {
+      "char_id": "1059",
+      "default_skin_id": "1059001",
+      "skins": [
+        {
+          "skin_id": "1059001",
+          "skin_name": "Elsa Bloodstone"
+        },
+        {
+          "skin_id": "1059000",
+          "skin_name": "Elsa Bloodstone-1059000"
+        },
+        {
+          "skin_id": "1059100",
+          "skin_name": "Apex Huntress"
+        },
+        {
+          "skin_id": "1059101",
+          "skin_name": "Icy Edge"
+        },
+        {
+          "skin_id": "1059300",
+          "skin_name": "Young Blood"
+        }
+      ]
+    },
+    "Emma Frost": {
+      "char_id": "1053",
+      "default_skin_id": "1053001",
+      "skins": [
+        {
+          "skin_id": "1053001",
+          "skin_name": "Emma Frost"
+        },
+        {
+          "skin_id": "1053000",
+          "skin_name": "Emma Frost"
+        },
+        {
+          "skin_id": "1053100",
+          "skin_name": "Blue Sapphire"
+        },
+        {
+          "skin_id": "1053101",
+          "skin_name": "Will Of Galacta"
+        },
+        {
+          "skin_id": "1053102",
+          "skin_name": "Golden Diamond"
+        },
+        {
+          "skin_id": "1053300",
+          "skin_name": "Hellfire Protocol"
+        },
+        {
+          "skin_id": "1053301",
+          "skin_name": "Queen Of Diamonds"
+        },
+        {
+          "skin_id": "1053500",
+          "skin_name": "X-Revolution"
+        },
+        {
+          "skin_id": "1053501",
+          "skin_name": "Phoenix Diamond"
+        },
+        {
+          "skin_id": "1053502",
+          "skin_name": "Black Queen Of The Marauders"
+        }
+      ]
+    },
+    "Gambit": {
+      "char_id": "1058",
+      "default_skin_id": "1058001",
+      "skins": [
+        {
+          "skin_id": "1058001",
+          "skin_name": "Gambit"
+        },
+        {
+          "skin_id": "1058100",
+          "skin_name": "Crimson Heart"
+        },
+        {
+          "skin_id": "1058101",
+          "skin_name": "Sacrificial Pawn"
+        },
+        {
+          "skin_id": "1058300",
+          "skin_name": "Thieves Guildmaster"
+        },
+        {
+          "skin_id": "1058302",
+          "skin_name": "Mr. X"
+        }
+      ]
+    },
+    "Groot": {
+      "char_id": "1027",
+      "default_skin_id": "1027001",
+      "skins": [
+        {
+          "skin_id": "1027001",
+          "skin_name": "Groot"
+        },
+        {
+          "skin_id": "1027100",
+          "skin_name": "Abies Algae"
+        },
+        {
+          "skin_id": "1027301",
+          "skin_name": "Yggroot"
+        },
+        {
+          "skin_id": "1027302",
+          "skin_name": "Holiday Happiness"
+        },
+        {
+          "skin_id": "1027303",
+          "skin_name": "Mecha-Flora"
+        },
+        {
+          "skin_id": "1027500",
+          "skin_name": "Carved Traveler"
+        },
+        {
+          "skin_id": "1027501",
+          "skin_name": "Symbiote Flora"
+        },
+        {
+          "skin_id": "1027502",
+          "skin_name": "Big Buddy"
+        },
+        {
+          "skin_id": "1027800",
+          "skin_name": "Guardians Of The Galaxy Vol. 3"
+        }
+      ]
+    },
+    "Hawkeye": {
+      "char_id": "1021",
+      "default_skin_id": "1021001",
+      "skins": [
+        {
+          "skin_id": "1021001",
+          "skin_name": "Hawkeye"
+        },
+        {
+          "skin_id": "1021100",
+          "skin_name": "Tiger's Eye"
+        },
+        {
+          "skin_id": "1021101",
+          "skin_name": "Will Of Galacta"
+        },
+        {
+          "skin_id": "1021300",
+          "skin_name": "Galactic Protocol"
+        },
+        {
+          "skin_id": "1021301",
+          "skin_name": "Old Man Hawkeye"
+        },
+        {
+          "skin_id": "1021500",
+          "skin_name": "Ronin"
+        },
+        {
+          "skin_id": "1021501",
+          "skin_name": "Freefall"
+        },
+        {
+          "skin_id": "1021502",
+          "skin_name": "Binary Arrow"
+        }
+      ]
+    },
+    "Hela": {
+      "char_id": "1024",
+      "default_skin_id": "1024001",
+      "skins": [
+        {
+          "skin_id": "1024001",
+          "skin_name": "Hela"
+        },
+        {
+          "skin_id": "1024100",
+          "skin_name": "Ultimate"
+        },
+        {
+          "skin_id": "1024101",
+          "skin_name": "Will Of Galacta"
+        },
+        {
+          "skin_id": "1024301",
+          "skin_name": "Queen Of The Stars"
+        },
+        {
+          "skin_id": "1024302",
+          "skin_name": "Yami No Karasu"
+        },
+        {
+          "skin_id": "1024303",
+          "skin_name": "Queen In Black"
+        },
+        {
+          "skin_id": "1024304",
+          "skin_name": "The Grim Lady"
+        },
+        {
+          "skin_id": "1024305",
+          "skin_name": "Disco Of The Dead"
+        },
+        {
+          "skin_id": "1024500",
+          "skin_name": "Goddess Of Death"
+        },
+        {
+          "skin_id": "1024800",
+          "skin_name": "Merciful Queen"
+        }
+      ]
+    },
+    "Hulk": {
+      "char_id": "1011",
+      "default_skin_id": "1011001",
+      "skins": [
+        {
+          "skin_id": "1011001",
+          "skin_name": "Hero Hulk"
+        },
+        {
+          "skin_id": "1011100",
+          "skin_name": "Mighty G-Bomb"
+        },
+        {
+          "skin_id": "1011300",
+          "skin_name": "Maestro"
+        },
+        {
+          "skin_id": "1011500",
+          "skin_name": "Gamma Burst"
+        },
+        {
+          "skin_id": "1011501",
+          "skin_name": "Green Scar"
+        },
+        {
+          "skin_id": "1011502",
+          "skin_name": "Joe Fixit"
+        }
+      ]
+    },
+    "Human Torch": {
+      "char_id": "1017",
+      "default_skin_id": "1017001",
+      "skins": [
+        {
+          "skin_id": "1017001",
+          "skin_name": "Human Torch"
+        },
+        {
+          "skin_id": "1017100",
+          "skin_name": "First Family"
+        },
+        {
+          "skin_id": "1017101",
+          "skin_name": "Blood Blaze"
+        },
+        {
+          "skin_id": "1017301",
+          "skin_name": "Jack Of Hearts"
+        },
+        {
+          "skin_id": "1017500",
+          "skin_name": "Negative Zone Gladiator"
+        },
+        {
+          "skin_id": "1017501",
+          "skin_name": "Future Foundation"
+        },
+        {
+          "skin_id": "1017502",
+          "skin_name": "Sunny Sizzler"
+        },
+        {
+          "skin_id": "1017800",
+          "skin_name": "The Fantastic Four: First Steps"
+        }
+      ]
+    },
+    "Invisible Woman": {
+      "char_id": "1050",
+      "default_skin_id": "1050001",
+      "skins": [
+        {
+          "skin_id": "1050100",
+          "skin_name": "First Family"
+        },
+        {
+          "skin_id": "1050101",
+          "skin_name": "Blood Shield"
+        },
+        {
+          "skin_id": "1050103",
+          "skin_name": "Will Of Galacta"
+        },
+        {
+          "skin_id": "1050300",
+          "skin_name": "The Life Fantastic"
+        },
+        {
+          "skin_id": "1050301",
+          "skin_name": "Disappearing Dessert"
+        },
+        {
+          "skin_id": "1050302",
+          "skin_name": "Prism Parade"
+        },
+        {
+          "skin_id": "1050500",
+          "skin_name": "Malice"
+        },
+        {
+          "skin_id": "1050501",
+          "skin_name": "Future Foundation"
+        },
+        {
+          "skin_id": "1050502",
+          "skin_name": "Azure Shade"
+        },
+        {
+          "skin_id": "1050800",
+          "skin_name": "The Fantastic Four: First Steps"
+        }
+      ]
+    },
+    "Iron Fist": {
+      "char_id": "1052",
+      "default_skin_id": "1052001",
+      "skins": [
+        {
+          "skin_id": "1052000",
+          "skin_name": "Lin Lie"
+        },
+        {
+          "skin_id": "1052100",
+          "skin_name": "Martial Arts Savant"
+        },
+        {
+          "skin_id": "1052101",
+          "skin_name": "Will Of Galacta"
+        },
+        {
+          "skin_id": "1052300",
+          "skin_name": "Lion's Gaze"
+        },
+        {
+          "skin_id": "1052301",
+          "skin_name": "Binary Fist"
+        },
+        {
+          "skin_id": "1052302",
+          "skin_name": "Shenloong Champion"
+        },
+        {
+          "skin_id": "1052500",
+          "skin_name": "Sword Master"
+        },
+        {
+          "skin_id": "1052501",
+          "skin_name": "Immortal Weapon Of Agamotto"
+        },
+        {
+          "skin_id": "1052502",
+          "skin_name": "Phoenix Fist"
+        }
+      ]
+    },
+    "Iron Man": {
+      "char_id": "1034",
+      "default_skin_id": "1034001",
+      "skins": [
+        {
+          "skin_id": "1034001",
+          "skin_name": "Iron Man"
+        },
+        {
+          "skin_id": "1034000",
+          "skin_name": "Iron Man"
+        },
+        {
+          "skin_id": "1034100",
+          "skin_name": "Armor Model 42"
+        },
+        {
+          "skin_id": "1034300",
+          "skin_name": "Blood Edge Armor"
+        },
+        {
+          "skin_id": "1034301",
+          "skin_name": "Iron Mariner"
+        },
+        {
+          "skin_id": "1034500",
+          "skin_name": "1872: Steam Power"
+        },
+        {
+          "skin_id": "1034501",
+          "skin_name": "Superior Iron Man"
+        },
+        {
+          "skin_id": "1034502",
+          "skin_name": "Extrembiote Armor"
+        },
+        {
+          "skin_id": "1034503",
+          "skin_name": "Big Shot"
+        },
+        {
+          "skin_id": "1034504",
+          "skin_name": "Mark I"
+        },
+        {
+          "skin_id": "1034800",
+          "skin_name": "Avengers: Endgame"
+        }
+      ]
+    },
+    "Jeff The Land Shark": {
+      "char_id": "1047",
+      "default_skin_id": "1047001",
+      "skins": [
+        {
+          "skin_id": "1047100",
+          "skin_name": "Adopted Avenger"
+        },
+        {
+          "skin_id": "1047300",
+          "skin_name": "Cuddly Fuzzlefin"
+        },
+        {
+          "skin_id": "1047301",
+          "skin_name": "Sunshine Land Shark"
+        },
+        {
+          "skin_id": "1047302",
+          "skin_name": "Jeff O'lantern"
+        },
+        {
+          "skin_id": "1047307",
+          "skin_name": "Duck Defender"
+        },
+        {
+          "skin_id": "1047500",
+          "skin_name": "Incognito Dolphin"
+        },
+        {
+          "skin_id": "1047501",
+          "skin_name": "Devouring Duo"
+        },
+        {
+          "skin_id": "1047502",
+          "skin_name": "Business Shark"
+        },
+        {
+          "skin_id": "1047800",
+          "skin_name": "8-Bit Bash"
+        }
+      ]
+    },
+    "Loki": {
+      "char_id": "1016",
+      "default_skin_id": "1016001",
+      "skins": [
+        {
+          "skin_id": "1016001",
+          "skin_name": "Loki"
+        },
+        {
+          "skin_id": "1016100",
+          "skin_name": "Frost Giant"
+        },
+        {
+          "skin_id": "1016101",
+          "skin_name": "Ignite Loki (2025)"
+        },
+        {
+          "skin_id": "1016300",
+          "skin_name": "Shin Sagi-Shi"
+        },
+        {
+          "skin_id": "1016301",
+          "skin_name": "Robe Of Relaxation"
+        },
+        {
+          "skin_id": "1016302",
+          "skin_name": "Crane Deceiver"
+        },
+        {
+          "skin_id": "1016500",
+          "skin_name": "Senator"
+        },
+        {
+          "skin_id": "1016501",
+          "skin_name": "All-Butcher"
+        },
+        {
+          "skin_id": "1016502",
+          "skin_name": "Lady Loki"
+        },
+        {
+          "skin_id": "1016800",
+          "skin_name": "Loki Season 2"
+        }
+      ]
+    },
+    "Luna Snow": {
+      "char_id": "1031",
+      "default_skin_id": "1031001",
+      "skins": [
+        {
+          "skin_id": "1031001",
+          "skin_name": "Luna Snow"
+        },
+        {
+          "skin_id": "1031100",
+          "skin_name": "Minty Beats"
+        },
+        {
+          "skin_id": "1031300",
+          "skin_name": "Shining Star"
+        },
+        {
+          "skin_id": "1031301",
+          "skin_name": "Mirae 2099"
+        },
+        {
+          "skin_id": "1031302",
+          "skin_name": "Nolaehaneun Manyeo"
+        },
+        {
+          "skin_id": "1031303",
+          "skin_name": "Cool Summer"
+        },
+        {
+          "skin_id": "1031305",
+          "skin_name": "Abyssal Glow"
+        },
+        {
+          "skin_id": "1031308",
+          "skin_name": "Cherry Delight"
+        },
+        {
+          "skin_id": "1031309",
+          "skin_name": "Disco Pop"
+        }
+      ]
+    },
+    "Magik": {
+      "char_id": "1029",
+      "default_skin_id": "1029001",
+      "skins": [
+        {
+          "skin_id": "1029001",
+          "skin_name": "Magik"
+        },
+        {
+          "skin_id": "1029100",
+          "skin_name": "Amethyst Armor"
+        },
+        {
+          "skin_id": "1029101",
+          "skin_name": "Will Of Galacta"
+        },
+        {
+          "skin_id": "1029300",
+          "skin_name": "Punkchild"
+        },
+        {
+          "skin_id": "1029301",
+          "skin_name": "Frozen Demon"
+        },
+        {
+          "skin_id": "1029303",
+          "skin_name": "New Millenia Might"
+        },
+        {
+          "skin_id": "1029500",
+          "skin_name": "Eldritch Armor"
+        },
+        {
+          "skin_id": "1029501",
+          "skin_name": "Retro X-Uniform"
+        },
+        {
+          "skin_id": "1029502",
+          "skin_name": "Phoenix Demon"
+        }
+      ]
+    },
+    "Magneto": {
+      "char_id": "1037",
+      "default_skin_id": "1037001",
+      "skins": [
+        {
+          "skin_id": "1037001",
+          "skin_name": "Magneto"
+        },
+        {
+          "skin_id": "1037100",
+          "skin_name": "Uncanny Blacksteel"
+        },
+        {
+          "skin_id": "1037101",
+          "skin_name": "Will Of Galacta"
+        },
+        {
+          "skin_id": "1037102",
+          "skin_name": "Black & Gold"
+        },
+        {
+          "skin_id": "1037300",
+          "skin_name": "Binary Sword"
+        },
+        {
+          "skin_id": "1037301",
+          "skin_name": "Temporal Tyrant"
+        },
+        {
+          "skin_id": "1037302",
+          "skin_name": "The Trial Of Magneto"
+        },
+        {
+          "skin_id": "1037500",
+          "skin_name": "Master Of Magnetism"
+        },
+        {
+          "skin_id": "1037501",
+          "skin_name": "King Magnus"
+        },
+        {
+          "skin_id": "1037502",
+          "skin_name": "Seat Of Autumn"
+        }
+      ]
+    },
+    "Mantis": {
+      "char_id": "1020",
+      "default_skin_id": "1020001",
+      "skins": [
+        {
+          "skin_id": "1020001",
+          "skin_name": "Mantis"
+        },
+        {
+          "skin_id": "1020100",
+          "skin_name": "Knowhere Corp"
+        },
+        {
+          "skin_id": "1020101",
+          "skin_name": "Will Of Galacta"
+        },
+        {
+          "skin_id": "1020300",
+          "skin_name": "Imperial Protocol: Galactic Wings"
+        },
+        {
+          "skin_id": "1020301",
+          "skin_name": "Jade Maiden"
+        },
+        {
+          "skin_id": "1020302",
+          "skin_name": "Oceanic Harmony"
+        },
+        {
+          "skin_id": "1020305",
+          "skin_name": "Galactic Gladiator"
+        },
+        {
+          "skin_id": "1020500",
+          "skin_name": "Flora Maiden"
+        },
+        {
+          "skin_id": "1020800",
+          "skin_name": "Guardians Of The Galaxy Vol. 3"
+        }
+      ]
+    },
+    "Mister Fantastic": {
+      "char_id": "1040",
+      "default_skin_id": "1040001",
+      "skins": [
+        {
+          "skin_id": "1040001",
+          "skin_name": "Mister Fantastic"
+        },
+        {
+          "skin_id": "1040000",
+          "skin_name": "Rubber Man"
+        },
+        {
+          "skin_id": "1040100",
+          "skin_name": "First Family"
+        },
+        {
+          "skin_id": "1040101",
+          "skin_name": "Will Of Galacta"
+        },
+        {
+          "skin_id": "1040300",
+          "skin_name": "The Life Fantastic"
+        },
+        {
+          "skin_id": "1040301",
+          "skin_name": "Dad-Tastic Reed"
+        },
+        {
+          "skin_id": "1040500",
+          "skin_name": "The Maker"
+        },
+        {
+          "skin_id": "1040501",
+          "skin_name": "Future Foundation"
+        },
+        {
+          "skin_id": "1040800",
+          "skin_name": "The Fantastic Four: First Steps"
+        }
+      ]
+    },
+    "Moon Knight": {
+      "char_id": "1030",
+      "default_skin_id": "1030001",
+      "skins": [
+        {
+          "skin_id": "1030001",
+          "skin_name": "Moon Knight"
+        },
+        {
+          "skin_id": "1030100",
+          "skin_name": "Golden Moonlight"
+        },
+        {
+          "skin_id": "1030101",
+          "skin_name": "Blood Moon Knight"
+        },
+        {
+          "skin_id": "1030300",
+          "skin_name": "Lunar General"
+        },
+        {
+          "skin_id": "1030301",
+          "skin_name": "King Of Clubs"
+        },
+        {
+          "skin_id": "1030500",
+          "skin_name": "Mister Knight"
+        },
+        {
+          "skin_id": "1030501",
+          "skin_name": "Phoenix Knight"
+        },
+        {
+          "skin_id": "1030800",
+          "skin_name": "Fist Of Vengeance"
+        },
+        {
+          "skin_id": "1030801",
+          "skin_name": "Moon Knight Mech"
+        }
+      ]
+    },
+    "Namor": {
+      "char_id": "1045",
+      "default_skin_id": "1045001",
+      "skins": [
+        {
+          "skin_id": "1045001",
+          "skin_name": "Namor"
+        },
+        {
+          "skin_id": "1045100",
+          "skin_name": "Mauve Sub-Mariner"
+        },
+        {
+          "skin_id": "1045101",
+          "skin_name": "Will Of Galacta"
+        },
+        {
+          "skin_id": "1045300",
+          "skin_name": "Phantom Tide"
+        },
+        {
+          "skin_id": "1045301",
+          "skin_name": "Monstro King"
+        },
+        {
+          "skin_id": "1045500",
+          "skin_name": "Savage Sub-Mariner"
+        },
+        {
+          "skin_id": "1045501",
+          "skin_name": "Retro X-Uniform"
+        },
+        {
+          "skin_id": "1045502",
+          "skin_name": "Phoenix King"
+        },
+        {
+          "skin_id": "1045800",
+          "skin_name": "Black Panther: Wakanda Forever"
+        }
+      ]
+    },
+    "Peni Parker": {
+      "char_id": "1042",
+      "default_skin_id": "1042001",
+      "skins": [
+        {
+          "skin_id": "1042001",
+          "skin_name": "Peni Parker"
+        },
+        {
+          "skin_id": "1042000",
+          "skin_name": "Sp//dr: Attack"
+        },
+        {
+          "skin_id": "1042100",
+          "skin_name": "Verdant"
+        },
+        {
+          "skin_id": "1042101",
+          "skin_name": "Blue Tarantula"
+        },
+        {
+          "skin_id": "1042300",
+          "skin_name": "Yatsukahagi"
+        },
+        {
+          "skin_id": "1042301",
+          "skin_name": "Wasteland Mech"
+        },
+        {
+          "skin_id": "1042302",
+          "skin_name": "Floral Frights"
+        },
+        {
+          "skin_id": "1042303",
+          "skin_name": "Snow-Sp//dr"
+        },
+        {
+          "skin_id": "1042500",
+          "skin_name": "Ven#m"
+        }
+      ]
+    },
+    "Phoenix": {
+      "char_id": "1054",
+      "default_skin_id": "1054001",
+      "skins": [
+        {
+          "skin_id": "1054100",
+          "skin_name": "The Return Of Jean Grey"
+        },
+        {
+          "skin_id": "1054101",
+          "skin_name": "Emerald Flames"
+        },
+        {
+          "skin_id": "1054102",
+          "skin_name": "Will Of Galacta"
+        },
+        {
+          "skin_id": "1054300",
+          "skin_name": "Chaos Phoenix"
+        },
+        {
+          "skin_id": "1054301",
+          "skin_name": "Ice Phoenix"
+        },
+        {
+          "skin_id": "1054500",
+          "skin_name": "Dark Phoenix"
+        }
+      ]
+    },
+    "Psylocke": {
+      "char_id": "1048",
+      "default_skin_id": "1048001",
+      "skins": [
+        {
+          "skin_id": "1048100",
+          "skin_name": "Kirisaki Sakura"
+        },
+        {
+          "skin_id": "1048300",
+          "skin_name": "Blood Kariudo"
+        },
+        {
+          "skin_id": "1048301",
+          "skin_name": "Fleeting Butterfly"
+        },
+        {
+          "skin_id": "1048302",
+          "skin_name": "Daring Daifuku"
+        },
+        {
+          "skin_id": "1048303",
+          "skin_name": "Once-Captive Corsair"
+        },
+        {
+          "skin_id": "1048304",
+          "skin_name": "Psychedelic Pulse"
+        },
+        {
+          "skin_id": "1048500",
+          "skin_name": "Vengeance"
+        },
+        {
+          "skin_id": "1048501",
+          "skin_name": "Retro X-Uniform"
+        },
+        {
+          "skin_id": "1048502",
+          "skin_name": "Breezy Butterfly"
+        }
+      ]
+    },
+    "Rocket Raccoon": {
+      "char_id": "1023",
+      "default_skin_id": "1023001",
+      "skins": [
+        {
+          "skin_id": "1023001",
+          "skin_name": "Rocket Raccoon"
+        },
+        {
+          "skin_id": "1023100",
+          "skin_name": "Rocky"
+        },
+        {
+          "skin_id": "1023101",
+          "skin_name": "Will Of Galacta"
+        },
+        {
+          "skin_id": "1023300",
+          "skin_name": "1872: Bounty Hunter"
+        },
+        {
+          "skin_id": "1023301",
+          "skin_name": "Wild Winter"
+        },
+        {
+          "skin_id": "1023302",
+          "skin_name": "Sunshine Raccoon"
+        },
+        {
+          "skin_id": "1023305",
+          "skin_name": "Rocket Of The Rafters"
+        },
+        {
+          "skin_id": "1023306",
+          "skin_name": "Giant Panda"
+        },
+        {
+          "skin_id": "1023500",
+          "skin_name": "Symbiote Raccoon"
+        },
+        {
+          "skin_id": "1023801",
+          "skin_name": "Guardians Of The Galaxy Vol. 3"
+        }
+      ]
+    },
+    "Rogue": {
+      "char_id": "1065",
+      "default_skin_id": "1065001",
+      "skins": [
+        {
+          "skin_id": "1065100",
+          "skin_name": "Queen's Defense"
+        },
+        {
+          "skin_id": "1065101",
+          "skin_name": "Searing Heart"
+        },
+        {
+          "skin_id": "1065300",
+          "skin_name": "Savage South"
+        },
+        {
+          "skin_id": "1065301",
+          "skin_name": "Mrs. X"
+        }
+      ]
+    },
+    "Scarlet Witch": {
+      "char_id": "1038",
+      "default_skin_id": "1038001",
+      "skins": [
+        {
+          "skin_id": "1038001",
+          "skin_name": "Scarlet Witch"
+        },
+        {
+          "skin_id": "1038100",
+          "skin_name": "White Witch"
+        },
+        {
+          "skin_id": "1038101",
+          "skin_name": "Nyx Weaver"
+        },
+        {
+          "skin_id": "1038300",
+          "skin_name": "Immortal Sovereign"
+        },
+        {
+          "skin_id": "1038301",
+          "skin_name": "Phoenix Chaos"
+        },
+        {
+          "skin_id": "1038304",
+          "skin_name": "Twisted Conjurer"
+        },
+        {
+          "skin_id": "1038500",
+          "skin_name": "Chaos Gown"
+        },
+        {
+          "skin_id": "1038501",
+          "skin_name": "Emporium Matron"
+        },
+        {
+          "skin_id": "1038502",
+          "skin_name": "Witch Of The Evil Eye"
+        },
+        {
+          "skin_id": "1038800",
+          "skin_name": "Chaos Witch"
+        },
+        {
+          "skin_id": "1038801",
+          "skin_name": "The Queen Of The Dead"
+        }
+      ]
+    },
+    "Spider-Man": {
+      "char_id": "1036",
+      "default_skin_id": "1036001",
+      "skins": [
+        {
+          "skin_id": "1036001",
+          "skin_name": "Spider-Man"
+        },
+        {
+          "skin_id": "1036000",
+          "skin_name": "Spider-Man"
+        },
+        {
+          "skin_id": "1036100",
+          "skin_name": "Scarlet Spider"
+        },
+        {
+          "skin_id": "1036101",
+          "skin_name": "Chasm"
+        },
+        {
+          "skin_id": "1036102",
+          "skin_name": "Black & Gold"
+        },
+        {
+          "skin_id": "1036300",
+          "skin_name": "Spider-Oni"
+        },
+        {
+          "skin_id": "1036500",
+          "skin_name": "2099: Spider-Punk"
+        },
+        {
+          "skin_id": "1036501",
+          "skin_name": "Bag-Man Beyond"
+        },
+        {
+          "skin_id": "1036502",
+          "skin_name": "Black Suit"
+        },
+        {
+          "skin_id": "1036503",
+          "skin_name": "Marvel's Spider-Man 2"
+        },
+        {
+          "skin_id": "1036504",
+          "skin_name": "Future Foundation"
+        },
+        {
+          "skin_id": "1036505",
+          "skin_name": "Man-Spider"
+        },
+        {
+          "skin_id": "1036508",
+          "skin_name": "Iron Spider"
+        },
+        {
+          "skin_id": "1036509",
+          "skin_name": "Groovy Swing"
+        },
+        {
+          "skin_id": "1036800",
+          "skin_name": "Iron Spider"
+        }
+      ]
+    },
+    "Squirrel Girl": {
+      "char_id": "1032",
+      "default_skin_id": "1032001",
+      "skins": [
+        {
+          "skin_id": "1032001",
+          "skin_name": "Squirrel Girl"
+        },
+        {
+          "skin_id": "1032000",
+          "skin_name": "Squirrel Girl"
+        },
+        {
+          "skin_id": "1032100",
+          "skin_name": "Arctic Lemmus"
+        },
+        {
+          "skin_id": "1032300",
+          "skin_name": "Nut Rocker"
+        },
+        {
+          "skin_id": "1032301",
+          "skin_name": "Cheerful Dragoness"
+        },
+        {
+          "skin_id": "1032302",
+          "skin_name": "Sunshine Squirrel"
+        },
+        {
+          "skin_id": "1032303",
+          "skin_name": "Turbo Tailwind"
+        },
+        {
+          "skin_id": "1032304",
+          "skin_name": "Tinsel Tail"
+        },
+        {
+          "skin_id": "1032305",
+          "skin_name": "Red Panda"
+        },
+        {
+          "skin_id": "1032500",
+          "skin_name": "Urban Hunter"
+        },
+        {
+          "skin_id": "1032501",
+          "skin_name": "Symbiote Squirrel"
+        }
+      ]
+    },
+    "Star-Lord": {
+      "char_id": "1043",
+      "default_skin_id": "1043001",
+      "skins": [
+        {
+          "skin_id": "1043001",
+          "skin_name": "Star-Lord"
+        },
+        {
+          "skin_id": "1043000",
+          "skin_name": "Guardian Of The Galaxy"
+        },
+        {
+          "skin_id": "1043100",
+          "skin_name": "Lord Of Saturn"
+        },
+        {
+          "skin_id": "1043102",
+          "skin_name": "Ignite Star-Lord (2025)"
+        },
+        {
+          "skin_id": "1043103",
+          "skin_name": "Luminous Legend"
+        },
+        {
+          "skin_id": "1043300",
+          "skin_name": "Lion's Mane"
+        },
+        {
+          "skin_id": "1043301",
+          "skin_name": "Starcracker"
+        },
+        {
+          "skin_id": "1043500",
+          "skin_name": "Master Of The Sun"
+        },
+        {
+          "skin_id": "1043501",
+          "skin_name": "King Of Spartax"
+        },
+        {
+          "skin_id": "1043502",
+          "skin_name": "Starlit Outlaw"
+        },
+        {
+          "skin_id": "1043800",
+          "skin_name": "Guardians Of The Galaxy Vol. 3"
+        }
+      ]
+    },
+    "Storm": {
+      "char_id": "1015",
+      "default_skin_id": "1015001",
+      "skins": [
+        {
+          "skin_id": "1015001",
+          "skin_name": "Storm"
+        },
+        {
+          "skin_id": "1015100",
+          "skin_name": "Ivory Breeze"
+        },
+        {
+          "skin_id": "1015300",
+          "skin_name": "Queen Of Orphans"
+        },
+        {
+          "skin_id": "1015500",
+          "skin_name": "Punk Storm"
+        },
+        {
+          "skin_id": "1015501",
+          "skin_name": "Ultimate Wind-Rider"
+        },
+        {
+          "skin_id": "1015502",
+          "skin_name": "Goddess Of Thunder"
+        },
+        {
+          "skin_id": "1015503",
+          "skin_name": "Symbiote Storm"
+        },
+        {
+          "skin_id": "1015504",
+          "skin_name": "Queen Of Wakanda"
+        }
+      ]
+    },
+    "The Punisher": {
+      "char_id": "1014",
+      "default_skin_id": "1014001",
+      "skins": [
+        {
+          "skin_id": "1014001",
+          "skin_name": "The Punisher"
+        },
+        {
+          "skin_id": "1014100",
+          "skin_name": "Camo"
+        },
+        {
+          "skin_id": "1014300",
+          "skin_name": "Dangan Ronin"
+        },
+        {
+          "skin_id": "1014500",
+          "skin_name": "Thunderbolts"
+        },
+        {
+          "skin_id": "1014501",
+          "skin_name": "Punisher 2099"
+        },
+        {
+          "skin_id": "1014502",
+          "skin_name": "Aqua Arsenal"
+        },
+        {
+          "skin_id": "1014503",
+          "skin_name": "Franken-Castle"
+        },
+        {
+          "skin_id": "1014800",
+          "skin_name": "Daredevil: Born Again"
+        }
+      ]
+    },
+    "The Thing": {
+      "char_id": "1051",
+      "default_skin_id": "1051001",
+      "skins": [
+        {
+          "skin_id": "1051000",
+          "skin_name": "The Thing"
+        },
+        {
+          "skin_id": "1051100",
+          "skin_name": "First Family"
+        },
+        {
+          "skin_id": "1051101",
+          "skin_name": "The Unlimited"
+        },
+        {
+          "skin_id": "1051102",
+          "skin_name": "Blue Thing"
+        },
+        {
+          "skin_id": "1051300",
+          "skin_name": "Rocky Tide"
+        },
+        {
+          "skin_id": "1051301",
+          "skin_name": "Sunshine Thing"
+        },
+        {
+          "skin_id": "1051500",
+          "skin_name": "Trench Coat"
+        },
+        {
+          "skin_id": "1051501",
+          "skin_name": "Future Foundation"
+        },
+        {
+          "skin_id": "1051502",
+          "skin_name": "Symbiote-Thing"
+        },
+        {
+          "skin_id": "1051504",
+          "skin_name": "Fear Itself"
+        },
+        {
+          "skin_id": "1051800",
+          "skin_name": "The Fantastic Four: First Steps"
+        }
+      ]
+    },
+    "Thor": {
+      "char_id": "1039",
+      "default_skin_id": "1039001",
+      "skins": [
+        {
+          "skin_id": "1039001",
+          "skin_name": "Thor"
+        },
+        {
+          "skin_id": "1039000",
+          "skin_name": "Thor"
+        },
+        {
+          "skin_id": "1039100",
+          "skin_name": "Midgard Umber"
+        },
+        {
+          "skin_id": "1039300",
+          "skin_name": "Worthy Waves"
+        },
+        {
+          "skin_id": "1039301",
+          "skin_name": "Lightning Fast"
+        },
+        {
+          "skin_id": "1039303",
+          "skin_name": "God Of Winter"
+        },
+        {
+          "skin_id": "1039500",
+          "skin_name": "Herald Of Thunder"
+        },
+        {
+          "skin_id": "1039501",
+          "skin_name": "Reborn From Ragnarok"
+        },
+        {
+          "skin_id": "1039502",
+          "skin_name": "Lord Of Asgard"
+        },
+        {
+          "skin_id": "1039503",
+          "skin_name": "Majestic Raiment"
+        },
+        {
+          "skin_id": "1039504",
+          "skin_name": "Boogie Bolt"
+        },
+        {
+          "skin_id": "1039800",
+          "skin_name": "Love And Thunder"
+        }
+      ]
+    },
+    "Ultron": {
+      "char_id": "1028",
+      "default_skin_id": "1028001",
+      "skins": [
+        {
+          "skin_id": "1028001",
+          "skin_name": "Ultron"
+        },
+        {
+          "skin_id": "1028000",
+          "skin_name": "Ultron"
+        },
+        {
+          "skin_id": "1028100",
+          "skin_name": "Mechanical Phantom"
+        },
+        {
+          "skin_id": "1028101",
+          "skin_name": "Golden Ultron"
+        },
+        {
+          "skin_id": "1028102",
+          "skin_name": "Will Of Galacta"
+        },
+        {
+          "skin_id": "1028300",
+          "skin_name": "Wasteland Robot"
+        },
+        {
+          "skin_id": "1028500",
+          "skin_name": "X-Tron"
+        },
+        {
+          "skin_id": "1028800",
+          "skin_name": "Infinity Ultron"
+        }
+      ]
+    },
+    "Venom": {
+      "char_id": "1035",
+      "default_skin_id": "1035001",
+      "skins": [
+        {
+          "skin_id": "1035001",
+          "skin_name": "Venom"
+        },
+        {
+          "skin_id": "1035000",
+          "skin_name": "Venom"
+        },
+        {
+          "skin_id": "1035100",
+          "skin_name": "Cyan Clash"
+        },
+        {
+          "skin_id": "1035101",
+          "skin_name": "Anti-Venom"
+        },
+        {
+          "skin_id": "1035102",
+          "skin_name": "Hyper Orange"
+        },
+        {
+          "skin_id": "1035103",
+          "skin_name": "Pink Bubble"
+        },
+        {
+          "skin_id": "1035300",
+          "skin_name": "Snow Symbiote"
+        },
+        {
+          "skin_id": "1035301",
+          "skin_name": "Reborn King In Black"
+        },
+        {
+          "skin_id": "1035302",
+          "skin_name": "Gummy Surprise"
+        },
+        {
+          "skin_id": "1035303",
+          "skin_name": "Space Corsair"
+        },
+        {
+          "skin_id": "1035500",
+          "skin_name": "Lingering Imprint"
+        },
+        {
+          "skin_id": "1035501",
+          "skin_name": "Space Knight"
+        }
+      ]
+    },
+    "Winter Soldier": {
+      "char_id": "1041",
+      "default_skin_id": "1041001",
+      "skins": [
+        {
+          "skin_id": "1041001",
+          "skin_name": "Winter Soldier"
+        },
+        {
+          "skin_id": "1041100",
+          "skin_name": "Navy Trooper"
+        },
+        {
+          "skin_id": "1041300",
+          "skin_name": "Blood Soldier"
+        },
+        {
+          "skin_id": "1041301",
+          "skin_name": "Polarity Soldier"
+        },
+        {
+          "skin_id": "1041500",
+          "skin_name": "Revolution"
+        },
+        {
+          "skin_id": "1041501",
+          "skin_name": "Winter's Veil"
+        },
+        {
+          "skin_id": "1041502",
+          "skin_name": "Winter Buckaroo"
+        },
+        {
+          "skin_id": "1041503",
+          "skin_name": "Bucky"
+        },
+        {
+          "skin_id": "1041800",
+          "skin_name": "Thunderbolts*"
+        }
+      ]
+    },
+    "Wolverine": {
+      "char_id": "1049",
+      "default_skin_id": "1049001",
+      "skins": [
+        {
+          "skin_id": "1049001",
+          "skin_name": "Wolverine"
+        },
+        {
+          "skin_id": "1049100",
+          "skin_name": "Lone Wolf"
+        },
+        {
+          "skin_id": "1049300",
+          "skin_name": "Blood Berserker"
+        },
+        {
+          "skin_id": "1049301",
+          "skin_name": "Dog Brother X"
+        },
+        {
+          "skin_id": "1049500",
+          "skin_name": "Patch"
+        },
+        {
+          "skin_id": "1049501",
+          "skin_name": "Weapon X"
+        },
+        {
+          "skin_id": "1049502",
+          "skin_name": "Weapon Phoenix"
+        },
+        {
+          "skin_id": "1049503",
+          "skin_name": "Winter Soldier"
+        },
+        {
+          "skin_id": "1049800",
+          "skin_name": "Deadpool & Wolverine"
+        }
+      ]
+    }
+  }
+}

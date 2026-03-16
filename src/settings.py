@@ -52,7 +52,7 @@ class Settings:
     last_skin: str = ""              # Last selected skin ID
     auto_deploy: bool = True         # Auto-deploy to ~mods after packing
     game_content_dir: str = ""       # Extracted game content for file copying
-    api_key: str = ""                # MarvelRivalsAPI.com API key for images
+    api_key: str = ""                # kept for backward compat with old settings.json; no longer used
     # Active swaps: char_id -> SwapRecord
     active_swaps: dict[str, dict] = field(default_factory=dict)
 
