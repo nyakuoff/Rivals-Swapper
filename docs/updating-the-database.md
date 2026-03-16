@@ -19,18 +19,14 @@
    ```
    Marvel/Content/Localization/Game/en/
    ```
-4. Right-click **Game.uasset** → **Export raw data** (or **Save Properties**).
-5. FModel writes `Game.json` to its output folder, typically one of:
-   ```
-   %USERPROFILE%\Desktop\MarvelModding\FModel\Output\Exports\Marvel\Content\Localization\Game\en\Game.json
-   %LOCALAPPDATA%\FModel\Output\Exports\Marvel\Content\Localization\Game\en\Game.json
-   ```
+4. Right-click the most recent **Game.uasset** → **Save Properties**.
+5. FModel will write `Game.json` to its output folder.
 
 ---
 
 ## Step 2 — Run the build script
 
-If `Game.json` is in one of the default locations above, just run:
+If `Game.json` is in one of the default locations, just run:
 
 ```powershell
 python scripts/build_database.py
@@ -42,18 +38,7 @@ Otherwise pass the path explicitly:
 python scripts/build_database.py "C:\path\to\Game.json"
 ```
 
-The script prints a summary and overwrites `data/game_database.json`:
-
-```
-Reading Game.json …
-  82,000 total localization keys
-  430 skin name entries
-  49 char name entries
-  49 characters in database
-
-Wrote data/game_database.json
-  49 characters, 430 total skins
-```
+The script will print a summary and overwrite `data/game_database.json`.
 
 ---
 
