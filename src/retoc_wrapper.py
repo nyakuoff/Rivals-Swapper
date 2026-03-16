@@ -194,6 +194,7 @@ class RetocWrapper:
             f"Marvel/Characters/{char_id}/{skin_id}/Meshes",
             f"Marvel/Characters/{char_id}/{skin_id}/Materials",
             f"Marvel/Characters/{char_id}/{skin_id}/Textures",
+            f"Marvel/Characters/{char_id}/{skin_id}/Texture",   # singular — retexture skins
         ]
         return self._run_extract(filter_patterns, output_dir)
 

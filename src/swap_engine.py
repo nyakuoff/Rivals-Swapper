@@ -180,7 +180,7 @@ class SwapEngine:
             src_str = str(src_path).replace("\\", "/")
             if not is_retexture and "/Meshes/" not in src_str:
                 continue
-            if is_retexture and "/Textures/" not in src_str:
+            if is_retexture and "/Textures/" not in src_str and "/Texture/" not in src_str:
                 continue
 
             if source_skin_root:
@@ -202,7 +202,8 @@ class SwapEngine:
                 log(f"  Staged: {fname}")
 
             if dst_path.suffix == ".uasset":
-                is_texture_file = "/Textures/" in str(dst_path).replace("\\", "/")
+                dst_str = str(dst_path).replace("\\", "/")
+                is_texture_file = "/Textures/" in dst_str or "/Texture/" in dst_str
                 try:
                     modified = patch_skin_id_in_uasset(
                         dst_path, source_id, target_id,
@@ -259,7 +260,13 @@ class SwapEngine:
         default_slots = self._find_weapon_asset_dirs(default_weapon_dir)
 
         if not source_slots:
-            return 0
+            # Flat weapon structure: source stores textures directly under
+            # Weapons/Texture/ rather than in named slot sub-dirs.
+            # Distribute them to every matching default slot.
+            return self._stage_flat_weapons(
+                source_weapon_dir, default_weapon_dir,
+                content_base, source_id, target_id, log,
+            )
 
         common_slots = sorted(set(source_slots.keys()) & set(default_slots.keys()))
         default_only = sorted(set(default_slots.keys()) - set(source_slots.keys()))
@@ -338,6 +345,126 @@ class SwapEngine:
                 physics_target = content_base / "Weapons" / def_meshes_rel
                 physics_target.mkdir(parents=True, exist_ok=True)
 
+                for phys_path in sorted(default_mesh_dir.glob("*")):
+                    if not phys_path.is_file():
+                        continue
+                    if not any(kw in phys_path.name for kw in DEFAULT_PHYSICS_KEYWORDS):
+                        continue
+                    if phys_path.suffix not in (".uasset", ".uexp"):
+                        continue
+                    dst_path = physics_target / phys_path.name
+                    if not dst_path.exists():
+                        shutil.copy2(str(phys_path), str(dst_path))
+                        file_count += 1
+
+        return file_count
+
+    def _stage_flat_weapons(
+        self,
+        source_weapon_dir: Path,
+        default_weapon_dir: Path,
+        content_base: Path,
+        source_id: str,
+        target_id: str,
+        log: LogCallback = _noop_log,
+    ) -> int:
+        """
+        Stage textures from a flat-structured source weapon.
+
+        Retexture skins store weapon textures directly in Weapons/Texture/
+        rather than per-slot sub-directories.  This method copies those flat
+        textures (renamed source_id → target_id) into every default weapon
+        slot that has a matching Texture sub-directory, then includes default
+        physics assets as usual.
+        """
+        src_weapons_root = self._find_weapons_root(source_weapon_dir)
+        def_weapons_root = self._find_weapons_root(default_weapon_dir)
+
+        if src_weapons_root is None:
+            return 0
+
+        # Find the flat texture folder under the source weapons root.
+        src_texture_dir: Optional[Path] = None
+        for name in ("Texture", "Textures"):
+            candidate = src_weapons_root / name
+            if candidate.is_dir():
+                src_texture_dir = candidate
+                break
+
+        if src_texture_dir is None:
+            return 0
+
+        src_files = [
+            f for f in sorted(src_texture_dir.glob("*"))
+            if f.is_file() and f.suffix in (".uasset", ".uexp", ".ubulk")
+            and not any(kw in f.name for kw in SKIP_FILE_KEYWORDS)
+        ]
+        if not src_files:
+            return 0
+
+        default_slots = self._find_weapon_asset_dirs(default_weapon_dir)
+        file_count = 0
+
+        if not default_slots:
+            # Default also has flat structure — stage directly.
+            target_dir = content_base / "Weapons" / src_texture_dir.name
+            target_dir.mkdir(parents=True, exist_ok=True)
+            log(f"  [flat-wpn → Weapons/{src_texture_dir.name}]")
+            for src_path in src_files:
+                new_name = src_path.name.replace(source_id, target_id)
+                dst_path = target_dir / new_name
+                shutil.copy2(str(src_path), str(dst_path))
+                if dst_path.suffix == ".uasset":
+                    try:
+                        modified = patch_skin_id_in_uasset(
+                            dst_path, source_id, target_id,
+                            skip_texture_refs=False,
+                            skip_material_refs=True,
+                        )
+                        if modified:
+                            log(f"    Patched: {new_name} ({len(modified)} entries)")
+                    except Exception as exc:
+                        log(f"    WARNING: Patch failed for {new_name}: {exc}")
+                file_count += 1
+            return file_count
+
+        # Slot-based default: fan the flat textures out to each slot.
+        for slot_name, sub_dirs in default_slots.items():
+            tex_sub: Optional[str] = None
+            for name in ("Texture", "Textures"):
+                if name in sub_dirs:
+                    tex_sub = name
+                    break
+            if tex_sub is None:
+                continue
+
+            target_dir = content_base / "Weapons" / slot_name / tex_sub
+            target_dir.mkdir(parents=True, exist_ok=True)
+            log(f"  [flat-wpn → {slot_name}/{tex_sub}]")
+
+            for src_path in src_files:
+                new_name = src_path.name.replace(source_id, target_id)
+                dst_path = target_dir / new_name
+                shutil.copy2(str(src_path), str(dst_path))
+                if dst_path.suffix == ".uasset":
+                    try:
+                        modified = patch_skin_id_in_uasset(
+                            dst_path, source_id, target_id,
+                            skip_texture_refs=False,
+                            skip_material_refs=True,
+                        )
+                        if modified:
+                            log(f"    Patched: {new_name} ({len(modified)} entries)")
+                    except Exception as exc:
+                        log(f"    WARNING: Patch failed for {new_name}: {exc}")
+                file_count += 1
+
+            # Include default physics for this slot.
+            if "Meshes" in sub_dirs and def_weapons_root is not None:
+                default_mesh_dir = sub_dirs["Meshes"]
+                def_meshes_rel = default_mesh_dir.relative_to(def_weapons_root)
+                physics_target = content_base / "Weapons" / def_meshes_rel
+                physics_target.mkdir(parents=True, exist_ok=True)
                 for phys_path in sorted(default_mesh_dir.glob("*")):
                     if not phys_path.is_file():
                         continue
