@@ -18,10 +18,10 @@ A Marvel Rivals skin changer tool that lets you swap character skins.
 | Tool | Source | Notes |
 |------|--------|-------|
 | **Python 3.11+** | [python.org](https://python.org) | |
-| **repak.exe** | Already included | `tools/Repak/CLI/repak.exe` |
-| **repak-gui.exe** | Already included | `tools/Repak/GUI/repak-gui.exe` |
-| **umodel** | Already included | `tools/umodel/umodel_materials_ue5.exe` — exports skin images from game paks |
-| **FModel** | [fmodel.app](https://fmodel.app) | Only needed when rebuilding the database after a game update |
+| **repak.exe** | Already included | `tools/Repak/CLI` |
+| **repak-gui.exe** | Already included | `tools/Repak/GUI` |
+| **umodel** | Already included | `tools/umodel` |
+| **FModel** | [fmodel.app](https://fmodel.app) |
 
 ## Quick Start
 
@@ -50,7 +50,7 @@ python main.py
 
 ## Docs
 
-- [Updating the database](docs/updating-the-database.md) — how to rebuild `data/game_database.json` after a Marvel Rivals update using FModel
+- [Updating the database](docs/updating-the-database.md) — You can manually rebuild the database if i haven't updated iit yet.
 
 > [!NOTE]
 > **AI Disclaimer**: Parts of this project were assisted or written by AI. If that's something you're not comfortable with, no hard feelings, I understand and I don't force anyone to use it. The code may have flaws. If you spot something that could be better, contributions are very welcome. I'm still learning and would appreciate the help.
