@@ -32,9 +32,8 @@ DEFAULT_GAME_JSON_PATHS = [
 # Key: char_id (str), Value: display name
 # ---------------------------------------------------------------------------
 CHAR_NAME_OVERRIDES: dict[str, str] = {
-    "1011": "Bruce Banner",    # localization says "HULK" via nameplate
-    "1025": "Cloak & Dagger",  # two entries in localization; C&D is one hero
-    "1026": "Cloak & Dagger",  # ditto
+    # Add entries here if auto-detection produces a wrong display name, e.g.:
+    # "1055": "Daredevil",
 }
 
 # ---------------------------------------------------------------------------
@@ -83,6 +82,7 @@ def _flatten(data: dict) -> dict[str, str]:
 
 _RE_SKIN_NAME    = re.compile(r"^UISkinTable_(\d+)_SkinBasic_SkinName$")
 _RE_SKIN_NAME2   = re.compile(r"^HeroUIAssetBPTable_(\d{8})_SkinInfo_SkinName$")
+_RE_SKIN_ITEM    = re.compile(r"^MarvelItemTable_(\d{7})_ItemName$")  # newer heroes
 _RE_HERO_TNAME1  = re.compile(r"^HeroUIAssetBPTable_(\d{8})_HeroInfo_TName$")
 _RE_HERO_TNAME2  = re.compile(r"^UIHeroTable_(\d{5})_HeroBasic_TName$")
 _RE_HERO_ITEM    = re.compile(r"^MarvelItemTable_(\d{4})_ItemName$")
@@ -93,7 +93,7 @@ def extract_skin_names(flat: dict[str, str]) -> dict[str, str]:
     """Return skin_id (7-digit str) → display name."""
     result: dict[str, str] = {}
     for key, val in flat.items():
-        # Pattern 1: UISkinTable (newer / seasonal skins)
+        # Pattern 1: UISkinTable (newer / seasonal skins) — highest priority
         m = _RE_SKIN_NAME.match(key)
         if m:
             loc_id  = int(m.group(1))
@@ -106,6 +106,15 @@ def extract_skin_names(flat: dict[str, str]) -> dict[str, str]:
             loc_id  = int(m.group(1))
             skin_id = str(loc_id // 10)
             result.setdefault(skin_id, _title(val))   # don't overwrite UISkinTable
+            continue
+        # Pattern 3: MarvelItemTable_{7digit}_ItemName
+        # Used by newer/season heroes (e.g. Daredevil, Angela, Gambit …)
+        # Only hero skin IDs start with "10" in this table.
+        m = _RE_SKIN_ITEM.match(key)
+        if m:
+            skin_id = m.group(1)
+            if skin_id[:2] == "10":          # hero skins only
+                result.setdefault(skin_id, _title(val))
     return result
 
 
