@@ -38,6 +38,10 @@
           "skin_name": "Magus"
         },
         {
+          "skin_id": "1046501",
+          "skin_name": "Living Tribunal"
+        },
+        {
           "skin_id": "1046800",
           "skin_name": "Guardians Of The Galaxy Vol. 3"
         }
@@ -70,6 +74,10 @@
         {
           "skin_id": "1056501",
           "skin_name": "Odin's Beautiful Daughter"
+        },
+        {
+          "skin_id": "1056502",
+          "skin_name": "Doom Angel"
         }
       ]
     },
@@ -336,6 +344,10 @@
         {
           "skin_id": "1057300",
           "skin_name": "Captain Pool"
+        },
+        {
+          "skin_id": "1057800",
+          "skin_name": "Wade Wilson: The Spirit Squad"
         }
       ]
     },
@@ -370,6 +382,10 @@
         {
           "skin_id": "1018303",
           "skin_name": "Phantom Sorcerer"
+        },
+        {
+          "skin_id": "1018304",
+          "skin_name": "Stephen Sanders: The Doctor"
         },
         {
           "skin_id": "1018500",
@@ -542,6 +558,10 @@
           "skin_name": "Will Of Galacta"
         },
         {
+          "skin_id": "1021102",
+          "skin_name": "Argent Archer"
+        },
+        {
           "skin_id": "1021300",
           "skin_name": "Galactic Protocol"
         },
@@ -598,6 +618,10 @@
         {
           "skin_id": "1024305",
           "skin_name": "Disco Of The Dead"
+        },
+        {
+          "skin_id": "1024306",
+          "skin_name": "Helen Angerboda: The Rebel"
         },
         {
           "skin_id": "1024500",
@@ -898,6 +922,10 @@
           "skin_name": "Lady Loki"
         },
         {
+          "skin_id": "1016503",
+          "skin_name": "Low-Key Loki"
+        },
+        {
           "skin_id": "1016800",
           "skin_name": "Loki Season 2"
         }
@@ -942,6 +970,10 @@
         {
           "skin_id": "1031309",
           "skin_name": "Disco Pop"
+        },
+        {
+          "skin_id": "1031312",
+          "skin_name": "Park Sun-Young: The Dancer"
         }
       ]
     },
@@ -1142,6 +1174,10 @@
           "skin_name": "King Of Clubs"
         },
         {
+          "skin_id": "1030302",
+          "skin_name": "Eclipse Knight"
+        },
+        {
           "skin_id": "1030500",
           "skin_name": "Mister Knight"
         },
@@ -1238,6 +1274,10 @@
           "skin_name": "Snow-Sp//dr"
         },
         {
+          "skin_id": "1042305",
+          "skin_name": "Badlands Lullaby"
+        },
+        {
           "skin_id": "1042500",
           "skin_name": "Ven#m"
         }
@@ -1270,6 +1310,10 @@
         {
           "skin_id": "1054500",
           "skin_name": "Dark Phoenix"
+        },
+        {
+          "skin_id": "1054501",
+          "skin_name": "Seat Of Spring"
         }
       ]
     },
@@ -1352,6 +1396,10 @@
           "skin_name": "Giant Panda"
         },
         {
+          "skin_id": "1023307",
+          "skin_name": "Rocky: The Transfer"
+        },
+        {
           "skin_id": "1023500",
           "skin_name": "Symbiote Raccoon"
         },
@@ -1398,6 +1446,10 @@
         {
           "skin_id": "1038101",
           "skin_name": "Nyx Weaver"
+        },
+        {
+          "skin_id": "1038102",
+          "skin_name": "Will Of Galacta"
         },
         {
           "skin_id": "1038300",
@@ -1654,6 +1706,10 @@
           "skin_name": "Dangan Ronin"
         },
         {
+          "skin_id": "1014301",
+          "skin_name": "Marauder Marksman"
+        },
+        {
           "skin_id": "1014500",
           "skin_name": "Thunderbolts"
         },
@@ -1774,6 +1830,10 @@
           "skin_name": "Boogie Bolt"
         },
         {
+          "skin_id": "1039505",
+          "skin_name": "Low-Key Thor"
+        },
+        {
           "skin_id": "1039800",
           "skin_name": "Love And Thunder"
         }
@@ -1810,6 +1870,10 @@
         {
           "skin_id": "1028500",
           "skin_name": "X-Tron"
+        },
+        {
+          "skin_id": "1028502",
+          "skin_name": "Odinforce Ultron"
         },
         {
           "skin_id": "1028800",
@@ -1868,6 +1932,32 @@
         {
           "skin_id": "1035501",
           "skin_name": "Space Knight"
+        }
+      ]
+    },
+    "White Fox": {
+      "char_id": "1060",
+      "default_skin_id": "1060001",
+      "skins": [
+        {
+          "skin_id": "1060001",
+          "skin_name": "White Fox"
+        },
+        {
+          "skin_id": "1060000",
+          "skin_name": "White Fox-1060000"
+        },
+        {
+          "skin_id": "1060100",
+          "skin_name": "Rosy Recon"
+        },
+        {
+          "skin_id": "1060101",
+          "skin_name": "Secret Agent"
+        },
+        {
+          "skin_id": "1060500",
+          "skin_name": "Yoon Ji-Woo: The Leader"
         }
       ]
     },

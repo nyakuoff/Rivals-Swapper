@@ -574,6 +574,32 @@ def _is_self_reference_path(name: str, source_skin_id: str,
     return False
 
 
+def patch_raw_bytes_in_file(path: Path, source_str: str, target_str: str) -> int:
+    """
+    Replace every raw ASCII occurrence of source_str with target_str in a
+    binary file.  Both strings must be the same byte length so that all
+    offsets and length-prefix values remain intact.
+
+    Use this to patch ObjectPath / SlotName FString values inside .uexp
+    property blobs where strings are stored inline (not in the name map)
+    and therefore have no CRC to recompute.
+
+    Returns the number of replacements made.
+    """
+    if len(source_str) != len(target_str):
+        raise ValueError(
+            f"patch_raw_bytes_in_file: source and target must be the same length "
+            f"({len(source_str)} vs {len(target_str)})"
+        )
+    src_bytes = source_str.encode("ascii")
+    tgt_bytes = target_str.encode("ascii")
+    data = path.read_bytes()
+    count = data.count(src_bytes)
+    if count:
+        path.write_bytes(data.replace(src_bytes, tgt_bytes))
+    return count
+
+
 def patch_skin_id_in_uasset(
     uasset_path: Path,
     source_skin_id: str,

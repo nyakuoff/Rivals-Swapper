@@ -18,7 +18,7 @@ from typing import Optional, Callable
 from .retoc_wrapper import RetocWrapper
 from .uassettool_wrapper import UAssetToolWrapper, PackResult
 from .skin_database import CharacterInfo, SkinInfo
-from .uasset_patcher import patch_skin_id_in_uasset
+from .uasset_patcher import patch_skin_id_in_uasset, patch_raw_bytes_in_file
 
 
 DEFAULT_PHYSICS_KEYWORDS = ("_PhysicsAsset",)
