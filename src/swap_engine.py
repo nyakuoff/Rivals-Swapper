@@ -158,16 +158,18 @@ class SwapEngine:
         has_meshes = any("\\Meshes\\" in str(f) or "/Meshes/" in str(f) for f in source_files)
         is_retexture = not has_meshes
 
-        # Mesh-swap: stage Meshes/ only � the source skin's Materials/Textures
-        # stay in base paks and the game loads them directly.
-        # Retexture: stage Textures/ only � the default MI_ in base paks
+        # Mesh-swap: stage Meshes/ only — the source skin's MI imports load
+        # from base paks.  The mesh .uexp is raw-patched to fix
+        # MaterialTagAssetUserData FString slot names so UAssetTool's tag
+        # injection during create_mod_iostore resolves correctly.
+        # Retexture: stage Textures/ only — the default mesh in base paks
         # already references T_{target_id}_* paths; staging renamed textures
-        # is sufficient.  Staging MI_ files risks corrupting parent-material
-        # references and causes in-game crashes.
+        # is sufficient.  MI files are not staged to avoid overriding the
+        # default mesh's material bindings.
         if is_retexture:
-            log("  Retexture skin � staging Textures only")
+            log("  Retexture skin — staging Textures only")
         else:
-            log("  Mesh-swap skin � staging Meshes only")
+            log("  Mesh-swap skin — staging Meshes only")
 
         for src_path in source_files:
             fname = src_path.name
@@ -214,6 +216,18 @@ class SwapEngine:
                         log(f"  Patched name map: {len(modified)} entries")
                 except Exception as exc:
                     log(f"  WARNING: Name map patch failed for {new_name}: {exc}")
+
+            elif dst_path.suffix == ".uexp" and not is_retexture:
+                # Raw-patch mesh .uexp: fixes MaterialTagAssetUserData slot
+                # FString entries so UAssetTool's tag injection during
+                # create_mod_iostore resolves to the correct target slots.
+                # ObjectReference bindings (MaterialInterface) are stored as
+                # import-table indices, NOT inline strings, so they are
+                # unaffected by this replace.
+                try:
+                    patch_raw_bytes_in_file(dst_path, source_id, target_id)
+                except Exception as exc:
+                    log(f"  WARNING: Mesh uexp patch failed for {new_name}: {exc}")
 
             file_count += 1
 
@@ -287,8 +301,9 @@ class SwapEngine:
                 log("  WARNING: Cannot find Weapons root in default extraction")
                 continue
 
-            # Same logic as character body: mesh-swap stages Meshes/, retexture
-            # stages Textures/ only (MI_ files are never staged � see _stage_mod).
+            # Same logic as character body: mesh-swap stages Meshes/ (with
+            # uexp raw-patch for MaterialTagAssetUserData), retexture stages
+            # Textures/ only.
             wpn_has_meshes = "Meshes" in src_asset_dirs
             wpn_is_retexture = not wpn_has_meshes
 
@@ -335,6 +350,14 @@ class SwapEngine:
                                 log(f"  [{slot_name}/{sub_name}] Patched: {new_name} ({len(modified)} entries)")
                         except Exception as exc:
                             log(f"  [{slot_name}/{sub_name}] WARNING: Patch failed for {new_name}: {exc}")
+
+                    elif dst_path.suffix == ".uexp" and sub_name == "Meshes":
+                        # Raw-patch weapon mesh .uexp to fix MaterialTagAssetUserData
+                        # slot FStrings (same reason as character body meshes).
+                        try:
+                            patch_raw_bytes_in_file(dst_path, source_id, target_id)
+                        except Exception as exc:
+                            log(f"  [{slot_name}/Meshes] WARNING: uexp patch failed for {new_name}: {exc}")
 
                     file_count += 1
 
