@@ -35,6 +35,8 @@ config/settings.json
 
 # Tools (binaries — committed to repo for CI reproducibility)
 # tools/
+# Project Galacta — downloaded at runtime from its GitHub releases
+tools/galacta/
 
 # Bundled third-party source
 temp_uassettool_src/

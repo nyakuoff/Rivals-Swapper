@@ -39,6 +39,7 @@ class SwapRecord:
     skin_id: str            # e.g. "1035101"
     skin_name: str          # e.g. "Anti-Venom"
     mod_name: str           # e.g. "Venom_Anti-Venom"
+    char_id: str = ""       # e.g. "1035"
     # Absolute paths to the deployed/output mod files
     pak_path: str = ""
     utoc_path: str = ""
@@ -53,24 +54,35 @@ class Settings:
     auto_deploy: bool = True         # Auto-deploy to ~mods after packing
     game_content_dir: str = ""       # Extracted game content for file copying
     api_key: str = ""                # kept for backward compat with old settings.json; no longer used
-    # Active swaps: char_id -> SwapRecord
+    # Active swaps: skin_id -> SwapRecord (several per hero allowed)
     active_swaps: dict[str, dict] = field(default_factory=dict)
 
-    def get_swap(self, char_id: str) -> Optional[SwapRecord]:
-        """Return the SwapRecord for a character, or None."""
-        data = self.active_swaps.get(char_id)
-        if data:
-            return SwapRecord(**{k: v for k, v in data.items()
-                                 if k in SwapRecord.__dataclass_fields__})
-        return None
+    def __post_init__(self) -> None:
+        # Older settings keyed swaps by char_id (one per hero); re-key by skin_id.
+        for key, data in list(self.active_swaps.items()):
+            skin_id = data.get("skin_id")
+            if skin_id and key != skin_id:
+                del self.active_swaps[key]
+                self.active_swaps[skin_id] = {**data, "char_id": data.get("char_id") or key}
 
-    def set_swap(self, char_id: str, record: SwapRecord) -> None:
-        """Register an active swap for a character (one per hero)."""
-        self.active_swaps[char_id] = asdict(record)
+    @staticmethod
+    def _record(data: dict) -> SwapRecord:
+        return SwapRecord(**{k: v for k, v in data.items()
+                             if k in SwapRecord.__dataclass_fields__})
 
-    def clear_swap(self, char_id: str) -> None:
-        """Remove the active swap for a character."""
-        self.active_swaps.pop(char_id, None)
+    def get_swap(self, skin_id: str) -> Optional[SwapRecord]:
+        data = self.active_swaps.get(skin_id)
+        return self._record(data) if data else None
+
+    def get_swaps(self, char_id: str) -> list[SwapRecord]:
+        return [self._record(d) for d in self.active_swaps.values()
+                if d.get("char_id") == char_id]
+
+    def set_swap(self, record: SwapRecord) -> None:
+        self.active_swaps[record.skin_id] = asdict(record)
+
+    def clear_swap(self, skin_id: str) -> None:
+        self.active_swaps.pop(skin_id, None)
 
 
 def load_settings(path: Path | str | None = None) -> Settings:

@@ -6,7 +6,7 @@ Modern two-screen layout with hero portrait images and skin icons:
   Screen 2 — Skin Grid : scrollable grid of skin cards with swap buttons.
 
 State:
-  • One swap per character (must Remove before swapping another).
+  • Several swaps per character (each is its own Project Galacta mod).
   • Active swaps persisted in settings.json.
   • Removing a swap deletes deployed .pak/.utoc/.ucas.
   • Logs clear on every new swap.
@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 import threading
+import time
 import webbrowser
 from pathlib import Path
 from typing import Optional
@@ -30,6 +31,9 @@ from .umodel_wrapper import UModelWrapper, UMODEL_OUT
 from .swap_engine import SwapEngine
 from .retoc_wrapper import RetocWrapper
 from .uassettool_wrapper import UAssetToolWrapper
+from .galacta import (
+    ensure_galacta, launch_companion, manifest_is_current, wait_for_manifest_write,
+)
 from .settings import (
     Settings, SwapRecord, load_settings, save_settings,
 )
@@ -116,6 +120,10 @@ def _find_game_paks() -> Optional[Path]:
 
 # Settings dialog
 # ======================================================================
+
+def _swaps_label(swaps: list[SwapRecord]) -> str:
+    return f"✔ {swaps[0].skin_name}" if len(swaps) == 1 else f"✔ {len(swaps)} skins"
+
 
 class SettingsWindow(ctk.CTkToplevel):
     """Modal settings dialog."""
@@ -530,6 +538,14 @@ class App(ctk.CTk):
             command=self._launch_game,
         ).pack(side="right", padx=4)
 
+        ctk.CTkButton(
+            top, text="Galacta", width=100, height=34,
+            fg_color="transparent", hover_color=_BG_HOVER,
+            border_width=1, border_color=_BORDER,
+            text_color=_TEXT,
+            command=self._open_companion,
+        ).pack(side="right", padx=4)
+
         # Content area
         self.content = ctk.CTkFrame(self, fg_color="transparent")
         self.content.pack(fill="both", expand=True, padx=20, pady=(12, 0))
@@ -703,13 +719,13 @@ class App(ctk.CTk):
             char = self.db.get_character(name)
             if not char:
                 continue
-            swap = self.settings.get_swap(char.char_id)
-            if self._hero_filter_active and swap is None:
+            swaps = self.settings.get_swaps(char.char_id)
+            if self._hero_filter_active and not swaps:
                 continue
             if search_text and search_text not in name.lower():
                 continue
             r, c = divmod(grid_i, HERO_COLUMNS)
-            self._hero_card(scroll, r, c, char, swap)
+            self._hero_card(scroll, r, c, char, swaps)
             grid_i += 1
 
         if grid_i == 0:
@@ -731,10 +747,10 @@ class App(ctk.CTk):
 
     def _hero_card(
         self, parent, row: int, col: int,
-        char: CharacterInfo, swap: Optional[SwapRecord],
+        char: CharacterInfo, swaps: list[SwapRecord],
     ) -> None:
         """Render a single hero card in the grid."""
-        is_active = swap is not None
+        is_active = bool(swaps)
         card_bg = _BG_CARD_A if is_active else _BG_CARD
 
         card = ctk.CTkFrame(
@@ -762,7 +778,7 @@ class App(ctk.CTk):
         if is_active:
             ctk.CTkLabel(
                 card,
-                text=f"✔ {swap.skin_name}",
+                text=_swaps_label(swaps),
                 font=ctk.CTkFont(size=12),
                 text_color=_GREEN,
             ).pack(pady=(0, 8))
@@ -788,7 +804,8 @@ class App(ctk.CTk):
         self._current_char = char
         self._clear_content()
 
-        swap = self.settings.get_swap(char.char_id)
+        swaps = self.settings.get_swaps(char.char_id)
+        active_ids = {s.skin_id for s in swaps}
 
         # Header bar
         hdr = ctk.CTkFrame(self.content, fg_color="transparent")
@@ -808,11 +825,11 @@ class App(ctk.CTk):
             text_color=_TEXT,
         ).pack(side="left", padx=8)
 
-        if swap:
+        if swaps:
             badge = ctk.CTkFrame(hdr, fg_color=_GREEN, corner_radius=6)
             badge.pack(side="right", padx=8)
             ctk.CTkLabel(
-                badge, text=f"  ✔ {swap.skin_name}  ",
+                badge, text=f"  {_swaps_label(swaps)}  ",
                 font=ctk.CTkFont(size=12, weight="bold"),
                 text_color="white",
             ).pack(padx=6, pady=3)
@@ -838,13 +855,11 @@ class App(ctk.CTk):
 
         for idx, skin in enumerate(skins):
             r, c = divmod(idx, SKIN_COLUMNS)
-            is_active = swap is not None and swap.skin_id == skin.skin_id
-            self._skin_card(scroll, r, c, char, skin, is_active,
-                            has_swap=swap is not None)
+            self._skin_card(scroll, r, c, char, skin, skin.skin_id in active_ids)
 
     def _skin_card(
         self, parent, row: int, col: int, char: CharacterInfo,
-        skin: SkinInfo, is_active: bool, has_swap: bool,
+        skin: SkinInfo, is_active: bool,
     ) -> None:
         """Render a single skin card in the grid (mirrors hero card layout)."""
         bg = _BG_CARD_A if is_active else _BG_CARD
@@ -879,15 +894,8 @@ class App(ctk.CTk):
                 card, text="Remove", width=110, height=30,
                 fg_color=_RED, hover_color=_RED_H,
                 corner_radius=8, text_color="white",
-                command=lambda: self._on_remove(char),
+                command=lambda: self._on_remove(char, skin.skin_id),
             ).pack(pady=(0, 10))
-        elif has_swap:
-            ctk.CTkButton(
-                card, text="Swap", width=110, height=30,
-                fg_color=_GREY, hover_color=_GREY,
-                corner_radius=8, state="disabled",
-                text_color=_TEXT_DIM,
-            ).pack(pady=(4, 10))
         else:
             ctk.CTkButton(
                 card, text="Swap", width=110, height=30,
@@ -921,11 +929,8 @@ class App(ctk.CTk):
         if self._busy:
             return
 
-        existing = self.settings.get_swap(character.char_id)
-        if existing:
-            self._log(
-                f"[ERROR] {character.name} already has an active swap "
-                f"({existing.skin_name}). Remove it first.")
+        if self.settings.get_swap(skin.skin_id):
+            self._log(f"[ERROR] {skin.skin_name} is already swapped in.")
             return
 
         if not self.settings.game_paks_dir:
@@ -952,6 +957,8 @@ class App(ctk.CTk):
             if not game_paks.is_dir():
                 self._log_async("[ERROR] Game Paks Folder not found.")
                 return
+
+            ensure_galacta(game_paks, self._log_async)
 
             retoc = RetocWrapper(output_dir=self.output_dir,
                                   game_paks_dir=game_paks)
@@ -984,6 +991,7 @@ class App(ctk.CTk):
                 skin_id=skin.skin_id,
                 skin_name=skin.skin_name,
                 mod_name=res.mod_name,
+                char_id=character.char_id,
                 pak_path=str(pr.pak_path) if pr.pak_path else "",
                 utoc_path=str(pr.utoc_path) if pr.utoc_path else "",
                 ucas_path=str(pr.ucas_path) if pr.ucas_path else "",
@@ -1000,9 +1008,14 @@ class App(ctk.CTk):
                 else:
                     self._log_async(f"[WARN] Deploy failed: {dr.error}")
 
-            self.settings.set_swap(character.char_id, record)
+            self.settings.set_swap(record)
             save_settings(self.settings)
-            self._log_async(f"Done! {res.files_created} files swapped")
+            self._log_async(
+                f"Done! In-game, equip {character.name}'s default skin and pick "
+                f"\"{skin.skin_name}\" from the Skin Swapper (P). Launch the game from "
+                "here (or use the Galacta button) and click Write in the Companion "
+                "so the skin gets added to the manifest."
+            )
 
         except Exception as exc:
             self._log_async(f"[ERROR] Unexpected error: {exc}")
@@ -1014,11 +1027,11 @@ class App(ctk.CTk):
     # Remove swap
     # ------------------------------------------------------------------
 
-    def _on_remove(self, character: CharacterInfo) -> None:
+    def _on_remove(self, character: CharacterInfo, skin_id: str) -> None:
         if self._busy:
             return
 
-        swap = self.settings.get_swap(character.char_id)
+        swap = self.settings.get_swap(skin_id)
         if not swap:
             self._log("Nothing to remove.")
             return
@@ -1050,7 +1063,7 @@ class App(ctk.CTk):
                         except OSError:
                             pass
 
-            self.settings.clear_swap(character.char_id)
+            self.settings.clear_swap(skin_id)
             save_settings(self.settings)
 
             self._log(f"Removed — {removed} file(s) deleted")
@@ -1068,9 +1081,63 @@ class App(ctk.CTk):
     def _on_settings_saved(self) -> None:
         self._log("Settings saved.")
 
+    def _open_companion(self) -> None:
+        if self._busy:
+            return
+        game_paks = Path(self.settings.game_paks_dir)
+        if not game_paks.is_dir():
+            self._show_log()
+            self._log("[ERROR] Configure Game Paks Folder in Settings first.")
+            return
+        self._busy = True
+        self._show_log()
+
+        def _run() -> None:
+            try:
+                ensure_galacta(game_paks, self._log_async)
+                self._log_async(launch_companion())
+            except Exception as exc:
+                self._log_async(f"[ERROR] {exc}")
+            finally:
+                self._busy = False
+
+        threading.Thread(target=_run, daemon=True).start()
+
     def _launch_game(self) -> None:
-        """Launch Marvel Rivals via Steam URI."""
-        webbrowser.open("steam://run/2767030")
+        """Refresh the Galacta manifest if ~mods changed, then launch Marvel Rivals via Steam."""
+        if self._busy:
+            return
+        game_paks = Path(self.settings.game_paks_dir)
+        if not game_paks.is_dir():
+            webbrowser.open("steam://run/2767030")
+            return
+        self._busy = True
+        self._show_log()
+
+        def _run() -> None:
+            try:
+                ensure_galacta(game_paks, self._log_async)
+                if manifest_is_current(game_paks):
+                    self._log_async("Skin Swapper manifest is up to date.")
+                else:
+                    since = time.time()
+                    self._log_async(launch_companion())
+                    self._log_async(
+                        "Waiting for you to click Write in the Companion's Manifest tab "
+                        "(close the Companion to launch without writing)..."
+                    )
+                    if wait_for_manifest_write(game_paks, since):
+                        self._log_async("Manifest written.")
+                    else:
+                        self._log_async("[WARN] Manifest wasn't written; new swaps won't show in-game.")
+            except Exception as exc:
+                self._log_async(f"[ERROR] {exc}")
+            finally:
+                self._busy = False
+                self._log_async("Launching Marvel Rivals...")
+                self.after(0, lambda: webbrowser.open("steam://run/2767030"))
+
+        threading.Thread(target=_run, daemon=True).start()
 
     def _remove_all_swaps(self) -> None:
         """Prompt the user then delete all active swaps and their mod files."""
@@ -1095,7 +1162,7 @@ class App(ctk.CTk):
         try:
             removed_files = 0
             swaps = dict(self.settings.active_swaps)
-            for char_id, swap_data in swaps.items():
+            for skin_id, swap_data in swaps.items():
                 swap = SwapRecord(**{k: v for k, v in swap_data.items()
                                      if k in SwapRecord.__dataclass_fields__})
                 for p_str in (swap.pak_path, swap.utoc_path, swap.ucas_path):
@@ -1116,7 +1183,7 @@ class App(ctk.CTk):
                                 removed_files += 1
                             except OSError:
                                 pass
-                self.settings.clear_swap(char_id)
+                self.settings.clear_swap(skin_id)
             save_settings(self.settings)
             self._log_async(f"Done — removed {removed_files} file(s)")
         except Exception as exc:

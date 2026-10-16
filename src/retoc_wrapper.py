@@ -23,7 +23,23 @@ from ._paths import PROJECT_ROOT, TOOLS_DIR
 _RETOC_NAME = "retoc.exe" if sys.platform == "win32" else "retoc"
 RETOC_EXE = TOOLS_DIR / "retoc" / _RETOC_NAME
 
-AES_KEY = "0C263D8C22DCB085894899C3A3796383E9BF9DE0CBFB08C9BF2DEF2E84F29D74"
+AES_KEY = "0x0C263D8C22DCB085894899C3A3796383E9BF9DE0CBFB08C9BF2DEF2E84F29D74"
+
+# Some pak chunks (e.g. specific patch containers) are encrypted with a key
+# tied to a non-default encryption key GUID rather than AES_KEY above. Our
+# patched retoc build (see tools/retoc/retoc.orig-0.1.5 for the unpatched
+# upstream binary) accepts these via repeated --aes-key-guid GUID:KEY args.
+# Add an entry here whenever a new container needs its own key.
+EXTRA_AES_KEYS: list[tuple[str, str]] = [
+    ("b53e535f8feeea44aacc46c9d5a1e707", "0xc1149b1dbecf933c290c328a764427c1ca2aec6d9efebd6a7750ee3fab0a059e"),
+]
+
+
+def _aes_key_args() -> list[str]:
+    args = ["--aes-key", AES_KEY]
+    for guid, key in EXTRA_AES_KEYS:
+        args.extend(["--aes-key-guid", f"{guid}:{key}"])
+    return args
 
 # Hide console window when launching subprocesses on Windows
 _SUBPROCESS_FLAGS = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
@@ -61,6 +77,7 @@ class RetocWrapper:
         self.output_dir = Path(output_dir)
         self.game_paks_dir = Path(game_paks_dir) if game_paks_dir else None
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self._filtered_paks_dir: Optional[Path] = None
 
     # ------------------------------------------------------------------
     # Validation
@@ -82,6 +99,49 @@ class RetocWrapper:
     # ------------------------------------------------------------------
     # Extract skin meshes
     # ------------------------------------------------------------------
+
+    def _get_readable_paks_dir(self) -> Path:
+        """
+        Return a directory of containers that decrypt with AES_KEY.
+
+        Marvel Rivals sometimes ships pak chunks for an upcoming patch
+        that are already present on disk but still encrypted with a key
+        that hasn't been released yet. retoc aborts the whole directory
+        scan if any single container fails to decrypt, so probe each
+        .utoc individually and build a staging dir (via links) containing
+        only the ones that actually work. Cached per instance since the
+        Paks directory doesn't change during a run.
+        """
+        if self._filtered_paks_dir is not None:
+            return self._filtered_paks_dir
+
+        staging = self.output_dir / "_paks_filtered"
+        if staging.exists():
+            shutil.rmtree(staging)
+        staging.mkdir(parents=True)
+
+        for utoc in self.game_paks_dir.glob("*.utoc"):
+            probe = subprocess.run(
+                [str(RETOC_EXE), *_aes_key_args(), "info", str(utoc)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                creationflags=_SUBPROCESS_FLAGS,
+            )
+            if probe.returncode != 0:
+                continue
+            for sibling in self.game_paks_dir.glob(f"{utoc.stem}.*"):
+                dst = staging / sibling.name
+                try:
+                    os.link(sibling, dst)
+                except OSError:
+                    try:
+                        os.symlink(sibling, dst)
+                    except OSError:
+                        shutil.copy2(sibling, dst)
+
+        self._filtered_paks_dir = staging
+        return staging
 
     def _run_extract(
         self,
@@ -111,9 +171,9 @@ class RetocWrapper:
 
         cmd = [
             str(RETOC_EXE),
-            "--aes-key", AES_KEY,
+            *_aes_key_args(),
             "to-legacy",
-            str(self.game_paks_dir),
+            str(self._get_readable_paks_dir()),
             str(output_dir),
         ]
         for f in filters:

@@ -574,6 +574,132 @@ def _is_self_reference_path(name: str, source_skin_id: str,
     return False
 
 
+# Summary layout for Marvel Rivals' cooked UE5.3 packages (LegacyFileVersion -8,
+# no custom versions). Offsets of every absolute-offset field after FolderName.
+_SUMMARY_I32_OFFSET_FIELDS = (
+    "NameOffset", "SoftObjectPathsOffset", "GatherableOffset", "ExportOffset",
+    "ImportOffset", "DependsOffset", "SoftPackageRefOffset", "SearchableNamesOffset",
+    "ThumbnailTableOffset", "AssetRegistryDataOffset", "WorldTileInfoOffset",
+    "PreloadDepOffset", "DataResourceOffset",
+)
+
+
+def _summary_field_positions(data: bytes) -> dict[str, int]:
+    """Byte positions of the summary fields (not their values)."""
+    pos: dict[str, int] = {}
+    o = 24
+    num_custom = _read_i32(data, o)
+    o += 4 + num_custom * 20
+    pos["TotalHeaderSize"] = o; o += 4
+    pos["FolderName"] = o
+    n = _read_i32(data, o)
+    o += 4 + (n if n >= 0 else -n * 2)
+    o += 4  # PackageFlags
+    for name in ("NameCount", "NameOffset", "SoftObjectPathsCount", "SoftObjectPathsOffset",
+                 "GatherableCount", "GatherableOffset", "ExportCount", "ExportOffset",
+                 "ImportCount", "ImportOffset", "DependsOffset", "SoftPackageRefCount",
+                 "SoftPackageRefOffset", "SearchableNamesOffset", "ThumbnailTableOffset"):
+        pos[name] = o; o += 4
+    o += 16  # Guid
+    o += 4 + _read_i32(data, o) * 8  # Generations
+    for _ in range(2):  # SavedByEngineVersion, CompatibleWithEngineVersion
+        o += 10
+        n = _read_i32(data, o)
+        o += 4 + (n if n >= 0 else -n * 2)
+    o += 16  # CompressionFlags, CompressedChunks, PackageSource, AdditionalPackagesToCook
+    pos["AssetRegistryDataOffset"] = o; o += 4
+    pos["BulkDataStartOffset"] = o; o += 8
+    pos["WorldTileInfoOffset"] = o; o += 4
+    o += 4 + _read_i32(data, o) * 4  # ChunkIDs
+    o += 4  # PreloadDependencyCount
+    pos["PreloadDepOffset"] = o; o += 4
+    o += 4 + 8  # NamesReferencedFromExportDataCount, PayloadTocOffset
+    pos["DataResourceOffset"] = o; o += 4
+    if o != _read_i32(data, pos["NameOffset"]):
+        raise ValueError("Unexpected package summary layout")
+    return pos
+
+
+def _fstring(s: str) -> bytes:
+    b = (s + "\x00").encode("utf-8")
+    return struct.pack("<i", len(b)) + b
+
+
+def relocate_package(uasset_path: Path, new_package_path: str) -> str:
+    """
+    Move a cooked package to a new path of any length: rewrites FolderName and
+    the package's own name-map entry, then shifts every absolute offset in the
+    header and export table.  The .uexp/.ubulk need no changes (bulk data
+    offsets are relative to the .ubulk / BulkDataStartOffset).
+
+    Returns the old package path.
+    """
+    raw = uasset_path.read_bytes()
+    pos = _summary_field_positions(raw)
+    name_count = _read_i32(raw, pos["NameCount"])
+    name_offset = _read_i32(raw, pos["NameOffset"])
+    export_count = _read_i32(raw, pos["ExportCount"])
+    export_offset = _read_i32(raw, pos["ExportOffset"])
+
+    folder_len = _read_i32(raw, pos["FolderName"])
+    if folder_len <= 0:
+        raise ValueError("FolderName missing or not ASCII")
+    old_path = raw[pos["FolderName"] + 4 : pos["FolderName"] + 4 + folder_len - 1].decode("utf-8")
+    old_dir, old_base = old_path.rsplit("/", 1)
+    new_dir = new_package_path.rsplit("/", 1)[0]
+
+    # The package's own path is stored either verbatim or, for names like
+    # SK_1048_1048309, as "…/SK_1048" plus an FName number suffix.
+    head, _, tail = old_base.rpartition("_")
+    self_names = {old_path}
+    if tail.isdigit():
+        self_names.add(f"{old_dir}/{head}")
+
+    entries = _parse_name_map(raw, name_count, name_offset)
+    new_map = bytearray()
+    for name, start, _str_start, end in entries:
+        if name in self_names:
+            new_name = new_dir + name[len(old_dir):]
+            new_map += _fstring(new_name) + raw[end - 4 : end]  # keep original hash
+        else:
+            new_map += raw[start:end]
+    names_end = entries[-1][3]
+
+    old_folder_end = pos["FolderName"] + 4 + folder_len
+    new_folder = _fstring(new_package_path)
+    d_folder = len(new_folder) - (old_folder_end - pos["FolderName"])
+    d_total = d_folder + len(new_map) - (names_end - name_offset)
+
+    buf = bytearray(raw[: pos["FolderName"]] + new_folder + raw[old_folder_end:name_offset]
+                    + new_map + raw[names_end:])
+
+    def shifted(value: int) -> int:
+        if value <= 0:
+            return value
+        if value >= names_end:
+            return value + d_total
+        if value >= name_offset:
+            return value + d_folder
+        return value
+
+    for field in _SUMMARY_I32_OFFSET_FIELDS:
+        p = pos[field] if pos[field] < pos["FolderName"] else pos[field] + d_folder
+        struct.pack_into("<i", buf, p, shifted(_read_i32(raw, pos[field])))
+    struct.pack_into("<i", buf, pos["TotalHeaderSize"],
+                     _read_i32(raw, pos["TotalHeaderSize"]) + d_total)
+    p = pos["BulkDataStartOffset"] + d_folder
+    struct.pack_into("<q", buf, p, struct.unpack_from("<q", raw, pos["BulkDataStartOffset"])[0] + d_total)
+
+    # Export table entries are 96 bytes; SerialOffset (int64) sits at +0x24.
+    new_export_offset = shifted(export_offset)
+    for i in range(export_count):
+        p = new_export_offset + i * 96 + 0x24
+        struct.pack_into("<q", buf, p, struct.unpack_from("<q", buf, p)[0] + d_total)
+
+    uasset_path.write_bytes(bytes(buf))
+    return old_path
+
+
 def patch_raw_bytes_in_file(path: Path, source_str: str, target_str: str) -> int:
     """
     Replace every raw ASCII occurrence of source_str with target_str in a
