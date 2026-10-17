@@ -1,4 +1,4 @@
-﻿name: Build & Release
+name: Build & Release
 
 on:
   push:
@@ -10,120 +10,85 @@ permissions:
   contents: write
 
 env:
-  RETOC_VERSION: "v0.1.5"
   UASSETTOOL_VERSION: "v1.2.0"
 
 jobs:
-  #  Windows build ─
-  build-windows:
-    runs-on: windows-latest
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            exe: rivals-swapper.exe
+            out: RivalsSwapper.exe
+            oodle: oo2core_9_win64.dll
+            archive: RivalsSwapper-Windows.zip
+          - os: ubuntu-latest
+            exe: rivals-swapper
+            out: RivalsSwapper
+            oodle: liboo2corelinux64.so.9
+            archive: RivalsSwapper-Linux.tar.gz
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: Build with PyInstaller
-        run: pyinstaller build.spec --noconfirm --clean
-
-      - name: Zip release folder
-        run: Compress-Archive -Path dist\RivalsSwapper\* -DestinationPath dist\RivalsSwapper-Windows.zip
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: RivalsSwapper-Windows
-          path: dist/RivalsSwapper-Windows.zip
-
-  #  Linux build 
-  build-linux:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install system dependencies
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y python3-tk
+          sudo apt-get install -y libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libwayland-dev libgl1-mesa-dev
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      # Committed tools/ contains Windows binaries.
-      # Replace retoc and UAssetTool with their Linux equivalents.
-      - name: Download retoc (Linux)
-        run: |
-          mkdir -p _retoc_tmp
-          curl -sL "https://github.com/trumank/retoc/releases/download/${{ env.RETOC_VERSION }}/retoc_cli-x86_64-unknown-linux-gnu.tar.xz" | tar -xJ -C _retoc_tmp
-          find _retoc_tmp -type f -name "retoc" -exec cp {} tools/retoc/retoc \;
-          chmod +x tools/retoc/retoc
-          rm -rf _retoc_tmp
+      - name: Build
+        run: cargo build --release --locked
 
       - name: Download UAssetTool (Linux)
+        if: runner.os == 'Linux'
         run: |
           curl -sL "https://github.com/XzantGaming/UAssetToolRivals/releases/download/${{ env.UASSETTOOL_VERSION }}/UAssetTool-linux-x64.tar.gz" | tar -xz -C tools/uassettool
           chmod +x tools/uassettool/UAssetTool
 
-      - name: Build with PyInstaller
-        run: pyinstaller build.spec --noconfirm --clean
+      - name: Assemble release folder
+        shell: bash
+        run: |
+          mkdir -p dist/RivalsSwapper/tools
+          cp "target/release/${{ matrix.exe }}" "dist/RivalsSwapper/${{ matrix.out }}"
+          cp "tools/oodle/${{ matrix.oodle }}" dist/RivalsSwapper/
+          cp -r tools/uassettool tools/umodel dist/RivalsSwapper/tools/
+          if [ "$RUNNER_OS" = "Windows" ]; then rm -f dist/RivalsSwapper/tools/uassettool/UAssetTool; else rm -f dist/RivalsSwapper/tools/uassettool/UAssetTool.exe; fi
 
-      - name: Archive release folder
-        run: tar -czf dist/RivalsSwapper-Linux.tar.gz -C dist RivalsSwapper
+      - name: Archive (Windows)
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path dist\RivalsSwapper\* -DestinationPath dist\${{ matrix.archive }}
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Archive (Linux)
+        if: runner.os == 'Linux'
+        run: tar -czf dist/${{ matrix.archive }} -C dist RivalsSwapper
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: RivalsSwapper-Linux
-          path: dist/RivalsSwapper-Linux.tar.gz
+          name: ${{ matrix.archive }}
+          path: dist/${{ matrix.archive }}
 
-  #  Create GitHub Release 
   release:
-    needs: [build-windows, build-linux]
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download Windows artifact
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: RivalsSwapper-Windows
           path: artifacts
-
-      - name: Download Linux artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: RivalsSwapper-Linux
-          path: artifacts
+          merge-multiple: true
 
       - name: Determine tag
         id: tag
-        run: |
-          VERSION=$(python -c 'import sys; sys.path.insert(0, "src"); from _version import __version__; print(__version__)')
-          echo "TAG_NAME=v${VERSION}" >> "$GITHUB_OUTPUT"
+        run: echo "TAG_NAME=v$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.TAG_NAME }}
           name: Rivals Swapper ${{ steps.tag.outputs.TAG_NAME }}
-          draft: false
-          prerelease: false
           generate_release_notes: true
           files: |
             artifacts/RivalsSwapper-Windows.zip

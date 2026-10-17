@@ -1,30 +1,8 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-*.egg-info/
-dist/
-build/
-*.egg
+/target/
 
-# Virtual environment
-.venv/
-venv/
-env/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*.sublime-*
-
-# Project — generated / runtime data
+# Old Python version's runtime data
+data/
 output/
-data/images/
-data/extracted/
-data/game_link/
 config/settings.json
 *.log
 
@@ -33,18 +11,12 @@ config/settings.json
 *.ucas
 *.utoc
 
-# Tools (binaries — committed to repo for CI reproducibility)
-# tools/
 # Project Galacta — downloaded at runtime from its GitHub releases
 tools/galacta/
 
-# Bundled third-party source
-temp_uassettool_src/
-
-# Example / test output
-example/
-
-# OS
+# IDE / OS
+.vscode/
+.idea/
 Thumbs.db
 .DS_Store
 desktop.ini
