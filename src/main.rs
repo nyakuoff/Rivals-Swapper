@@ -179,15 +179,21 @@ fn main() -> eframe::Result {
         return Ok(());
     }
 
+    #[cfg(target_os = "linux")]
+    if let Err(e) = install_desktop_entry() {
+        eprintln!("[desktop entry] {e}");
+    }
     let icon =
-        eframe::icon_data::from_png_bytes(include_bytes!("../assets/RivalsIcon_NoOutline.png"))
+        eframe::icon_data::from_png_bytes(include_bytes!("../assets/RivalsIcon_Outline.png"))
             .unwrap_or_default();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Rivals Swapper")
-            .with_inner_size([1100.0, 760.0])
-            .with_min_inner_size([700.0, 480.0])
-            .with_icon(icon),
+            .with_inner_size([1240.0, 800.0])
+            .with_min_inner_size([960.0, 600.0])
+            .with_icon(icon)
+            // Wayland shows the icon of the .desktop entry matching this id.
+            .with_app_id("rivals-swapper"),
         ..Default::default()
     };
     eframe::run_native(
@@ -195,6 +201,31 @@ fn main() -> eframe::Result {
         options,
         Box::new(|cc| Ok(Box::new(App::new(&cc.egui_ctx)))),
     )
+}
+
+/// Wayland compositors take window icons from the .desktop entry whose name
+/// matches the app id, so register one for this binary (and its icon).
+#[cfg(target_os = "linux")]
+fn install_desktop_entry() -> std::io::Result<()> {
+    let data = std::env::var_os("XDG_DATA_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/share")
+        });
+    let icon = data.join("icons/hicolor/512x512/apps/rivals-swapper.png");
+    let entry = data.join("applications/rivals-swapper.desktop");
+    let exe = std::env::current_exe()?;
+    let text = format!(
+        "[Desktop Entry]\nType=Application\nName=Rivals Swapper\nComment=Swap Marvel Rivals skins\nExec=\"{}\"\nIcon=rivals-swapper\nStartupWMClass=rivals-swapper\nCategories=Game;Utility;\n",
+        exe.display()
+    );
+    if std::fs::read_to_string(&entry).ok().as_deref() != Some(text.as_str()) {
+        std::fs::create_dir_all(icon.parent().unwrap())?;
+        std::fs::write(&icon, include_bytes!("../assets/RivalsIcon_Outline.png"))?;
+        std::fs::create_dir_all(entry.parent().unwrap())?;
+        std::fs::write(&entry, text)?;
+    }
+    Ok(())
 }
 
 /// `rivals-swapper --dump-db out.json`: rebuild the database from the game and write it.
@@ -221,14 +252,17 @@ fn dump_db(out: &Path) -> anyhow::Result<()> {
 // App
 // ---------------------------------------------------------------------------
 
-const BG: Color32 = Color32::from_rgb(0x12, 0x12, 0x12);
-const CARD: Color32 = Color32::from_rgb(0x1e, 0x1e, 0x1e);
-const BORDER: Color32 = Color32::from_rgb(0x33, 0x33, 0x33);
-const ACCENT: Color32 = Color32::from_rgb(0xf0, 0xc2, 0x32);
-const GREEN: Color32 = Color32::from_rgb(0x00, 0xb8, 0x94);
-const RED: Color32 = Color32::from_rgb(0xd6, 0x30, 0x31);
-const TEXT: Color32 = Color32::from_rgb(0xe0, 0xe0, 0xe0);
-const DIM: Color32 = Color32::from_rgb(0x80, 0x80, 0x80);
+// Palette from the game's menus: indigo night sky, logo yellow, Marvel red.
+const VOID: Color32 = Color32::from_rgb(0x0e, 0x10, 0x20);
+const PANEL: Color32 = Color32::from_rgb(0x15, 0x18, 0x31);
+const RAISED: Color32 = Color32::from_rgb(0x1e, 0x22, 0x40);
+const LINE: Color32 = Color32::from_rgb(0x2c, 0x31, 0x58);
+const YELLOW: Color32 = Color32::from_rgb(0xff, 0xc7, 0x2c);
+const RED: Color32 = Color32::from_rgb(0xe5, 0x30, 0x3f);
+const TEXT: Color32 = Color32::from_rgb(0xed, 0xef, 0xf7);
+const MUTED: Color32 = Color32::from_rgb(0x8a, 0x90, 0xb2);
+/// Dark text on yellow.
+const INK: Color32 = Color32::from_rgb(0x14, 0x16, 0x2a);
 
 /// State shared with worker threads.
 #[derive(Default)]
@@ -337,15 +371,10 @@ impl Handle {
     }
 }
 
-#[derive(Clone, PartialEq)]
-enum View {
-    Heroes,
-    Skins(String), // char_id
-}
-
 struct App {
     h: Handle,
-    view: View,
+    /// char_id of the hero on stage.
+    selected: Option<String>,
     search: String,
     swapped_only: bool,
     log_open: bool,
@@ -357,6 +386,7 @@ struct App {
 impl App {
     fn new(ctx: &egui::Context) -> Self {
         egui_extras::install_image_loaders(ctx);
+        fonts(ctx);
         style(ctx);
         let settings = Settings::load();
         let h = Handle {
@@ -377,7 +407,7 @@ impl App {
         });
         Self {
             h,
-            view: View::Heroes,
+            selected: None,
             search: String::new(),
             swapped_only: false,
             log_open: false,
@@ -395,6 +425,9 @@ impl App {
                 "Swapping {} -> {} ({})",
                 character.name, skin.name, skin.id
             ));
+            if character.texture_risk {
+                h.log(format!("[WARN] {}", texture_risk_text(&character.name)));
+            }
             let paks = PathBuf::from(h.with(|s| s.settings.game_paks_dir.clone()));
             let log = |m: String| h.log(format!("  {m}"));
             log("Reading game files...".into());
@@ -473,91 +506,326 @@ fn delete_swap(settings: &mut Settings, skin_id: &str, log: &mut Vec<String>) {
     log.push(format!("Removed {}", rec.skin_name));
 }
 
+fn fonts(ctx: &egui::Context) {
+    use egui::{FontData, FontFamily};
+    let mut f = egui::FontDefinitions::default();
+    let mut add = |name: &str, bytes: &'static [u8]| {
+        f.font_data
+            .insert(name.into(), Arc::new(FontData::from_static(bytes)));
+    };
+    add(
+        "barlow",
+        include_bytes!("../assets/fonts/Barlow-Regular.ttf"),
+    );
+    add(
+        "barlow-medium",
+        include_bytes!("../assets/fonts/Barlow-Medium.ttf"),
+    );
+    add(
+        "display",
+        include_bytes!("../assets/fonts/BarlowCondensed-SemiBoldItalic.ttf"),
+    );
+    let fallback = f.families[&FontFamily::Proportional].clone();
+    let family = |main: &str| [vec![main.to_string()], fallback.clone()].concat();
+    f.families
+        .insert(FontFamily::Proportional, family("barlow"));
+    f.families
+        .insert(FontFamily::Name("medium".into()), family("barlow-medium"));
+    f.families
+        .insert(FontFamily::Name("display".into()), family("display"));
+    ctx.set_fonts(f);
+}
+
+fn font(family: &str, size: f32) -> egui::FontId {
+    egui::FontId::new(size, egui::FontFamily::Name(family.into()))
+}
+
 fn style(ctx: &egui::Context) {
+    use egui::{FontFamily, TextStyle};
     ctx.set_theme(egui::Theme::Dark);
     ctx.style_mut_of(egui::Theme::Dark, |s| {
-        s.visuals.panel_fill = BG;
-        s.visuals.window_fill = CARD;
-        s.visuals.extreme_bg_color = Color32::from_rgb(0x18, 0x18, 0x18);
-        s.visuals.override_text_color = Some(TEXT);
-        s.visuals.selection.bg_fill = ACCENT.linear_multiply(0.5);
-        s.visuals.widgets.inactive.corner_radius = CornerRadius::same(6);
-        s.visuals.widgets.hovered.corner_radius = CornerRadius::same(6);
-        s.visuals.widgets.active.corner_radius = CornerRadius::same(6);
-        s.visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, BORDER);
-        s.spacing.button_padding = Vec2::new(12.0, 6.0);
+        s.text_styles = [
+            (
+                TextStyle::Small,
+                egui::FontId::new(12.5, FontFamily::Proportional),
+            ),
+            (
+                TextStyle::Body,
+                egui::FontId::new(15.0, FontFamily::Proportional),
+            ),
+            (TextStyle::Button, font("medium", 15.0)),
+            (TextStyle::Heading, font("display", 30.0)),
+            (
+                TextStyle::Monospace,
+                egui::FontId::new(13.0, FontFamily::Monospace),
+            ),
+        ]
+        .into();
+        let v = &mut s.visuals;
+        v.panel_fill = VOID;
+        v.window_fill = PANEL;
+        v.window_stroke = Stroke::new(1.0, LINE);
+        v.window_corner_radius = CornerRadius::same(4);
+        v.extreme_bg_color = PANEL; // text fields
+        v.override_text_color = Some(TEXT);
+        v.hyperlink_color = YELLOW;
+        v.selection.bg_fill = LINE;
+        v.selection.stroke = Stroke::new(1.0, YELLOW);
+        for w in [
+            &mut v.widgets.inactive,
+            &mut v.widgets.hovered,
+            &mut v.widgets.active,
+            &mut v.widgets.open,
+        ] {
+            w.corner_radius = CornerRadius::same(3);
+        }
+        v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, LINE);
+        v.widgets.inactive.weak_bg_fill = RAISED;
+        v.widgets.inactive.bg_fill = RAISED;
+        v.widgets.inactive.bg_stroke = Stroke::new(1.0, LINE);
+        v.widgets.hovered.weak_bg_fill = LINE;
+        v.widgets.hovered.bg_fill = LINE;
+        v.widgets.hovered.bg_stroke = Stroke::new(1.0, MUTED);
+        v.widgets.active.weak_bg_fill = LINE;
+        v.widgets.active.bg_stroke = Stroke::new(1.0, YELLOW);
+        s.spacing.button_padding = Vec2::new(14.0, 7.0);
         s.spacing.item_spacing = Vec2::new(10.0, 10.0);
+        s.spacing.interact_size.y = 32.0;
     });
 }
 
-/// Image from the cache, or a flat placeholder while it doesn't exist.
-fn thumb(ui: &mut egui::Ui, path: &Path, size: f32, dim: bool) {
-    let tint = if dim {
-        Color32::from_gray(90)
-    } else {
-        Color32::WHITE
-    };
-    if path.exists() {
-        ui.add(
-            egui::Image::new(format!("file://{}", path.display()))
-                .fit_to_exact_size(Vec2::splat(size))
-                .corner_radius(6)
-                .tint(tint),
-        );
-    } else {
-        let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
-        ui.painter()
-            .rect_filled(rect, 6, Color32::from_rgb(0x26, 0x26, 0x26));
-    }
+// ---------------------------------------------------------------------------
+// Shapes: the game's slanted tabs. Used only for the primary action, the
+// selected hero and the swapped tag.
+// ---------------------------------------------------------------------------
+
+const SLANT: f32 = 9.0;
+
+fn slanted(rect: egui::Rect, slant: f32) -> Vec<egui::Pos2> {
+    vec![
+        rect.left_bottom(),
+        rect.left_top() + Vec2::new(slant, 0.0),
+        rect.right_top(),
+        rect.right_bottom() - Vec2::new(slant, 0.0),
+    ]
 }
 
-/// Lay items out in rows of as many `card_w`-wide cards as fit.
-fn rows<T>(ui: &mut egui::Ui, items: &[T], mut card: impl FnMut(&mut egui::Ui, &T)) {
-    const OUTER: f32 = CARD_W + 23.0; // inner margin + stroke
-    let gap = ui.spacing().item_spacing.x;
-    let cols = (((ui.available_width() + gap) / (OUTER + gap)) as usize).max(1);
-    for row in items.chunks(cols) {
-        ui.horizontal(|ui| row.iter().for_each(|it| card(ui, it)));
-    }
+#[derive(Clone, Copy, PartialEq)]
+enum Tone {
+    Primary,
+    Danger,
+    Ghost,
 }
 
-const CARD_W: f32 = 150.0;
-
-/// A card; `body` draws the contents. Not clickable itself, so buttons inside
-/// keep their clicks (see `clickable` for whole-card clicks).
-fn card(
+/// A slanted button. Keyboard-focusable, with a visible focus outline.
+fn slant_button(
     ui: &mut egui::Ui,
+    text: &str,
+    tone: Tone,
+    enabled: bool,
     width: f32,
-    border: Color32,
-    body: impl FnOnce(&mut egui::Ui),
 ) -> egui::Response {
-    egui::Frame::new()
-        .fill(CARD)
-        .stroke(Stroke::new(1.5, border))
-        .corner_radius(10)
-        .inner_margin(10)
-        .show(ui, |ui| {
-            ui.set_width(width);
-            ui.vertical_centered(body);
-        })
-        .response
-}
-
-/// Make a whole card clickable, with a hover outline. Only for cards without
-/// buttons: the click area sits on top of the card's contents.
-fn clickable(ui: &mut egui::Ui, card: egui::Response) -> egui::Response {
-    let resp = card.interact(Sense::click());
-    if resp.hovered() {
-        ui.painter().rect_stroke(
-            resp.rect,
-            10,
-            Stroke::new(1.5, ACCENT.linear_multiply(0.6)),
-            egui::StrokeKind::Inside,
+    let galley = ui
+        .painter()
+        .layout_no_wrap(text.into(), font("medium", 15.0), TEXT);
+    let size = Vec2::new(width.max(galley.size().x + 2.0 * SLANT + 24.0), 36.0);
+    let (rect, resp) = ui.allocate_exact_size(
+        size,
+        if enabled {
+            Sense::click()
+        } else {
+            Sense::hover()
+        },
+    );
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, text));
+    if ui.is_rect_visible(rect) {
+        let lit = enabled && resp.hovered();
+        let (fill, stroke, ink) = match tone {
+            Tone::Primary => (
+                if lit {
+                    Color32::from_rgb(0xff, 0xd6, 0x5c)
+                } else {
+                    YELLOW
+                },
+                Stroke::NONE,
+                INK,
+            ),
+            Tone::Danger => (
+                if lit {
+                    Color32::from_rgb(0xf0, 0x48, 0x56)
+                } else {
+                    RED
+                },
+                Stroke::NONE,
+                Color32::WHITE,
+            ),
+            Tone::Ghost => (
+                if lit { RAISED } else { Color32::TRANSPARENT },
+                Stroke::new(1.0, if lit { MUTED } else { LINE }),
+                TEXT,
+            ),
+        };
+        let (fill, ink) = if enabled {
+            (fill, ink)
+        } else {
+            (fill.gamma_multiply(0.35), ink.gamma_multiply(0.6))
+        };
+        let rect = if resp.is_pointer_button_down_on() {
+            rect.translate(Vec2::new(0.0, 1.0))
+        } else {
+            rect
+        };
+        ui.painter().add(egui::Shape::convex_polygon(
+            slanted(rect, SLANT),
+            fill,
+            stroke,
+        ));
+        if resp.has_focus() {
+            ui.painter().add(egui::Shape::closed_line(
+                slanted(rect.expand(3.0), SLANT),
+                Stroke::new(1.5, TEXT),
+            ));
+        }
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            text,
+            font("medium", 15.0),
+            ink,
         );
+    }
+    if enabled && resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
     }
     resp
 }
+
+/// Image from the cache, or a quiet placeholder while it's missing.
+fn paint_image(ui: &egui::Ui, path: &Path, rect: egui::Rect, dim: bool) {
+    paint_image_uv(
+        ui,
+        path,
+        rect,
+        dim,
+        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+    );
+}
+
+/// Same, showing only the `uv` part of the image (0..1 coordinates).
+fn paint_image_uv(ui: &egui::Ui, path: &Path, rect: egui::Rect, dim: bool, uv: egui::Rect) {
+    if path.exists() {
+        egui::Image::new(format!("file://{}", path.display()))
+            .uv(uv)
+            .tint(if dim {
+                Color32::from_gray(80)
+            } else {
+                Color32::WHITE
+            })
+            .paint_at(ui, rect);
+    } else {
+        ui.painter().rect_filled(rect, 0, RAISED);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Skin cards
+// ---------------------------------------------------------------------------
+
+const CARD_W: f32 = 176.0;
+const CHAMFER: f32 = 16.0;
+
+/// Lay items out in rows of as many cards as fit, stretched to fill the row.
+/// `card` gets the card width.
+fn rows<T>(ui: &mut egui::Ui, items: &[T], mut card: impl FnMut(&mut egui::Ui, &T, f32)) {
+    let gap = 14.0;
+    let avail = ui.available_width() - 2.0; // card stroke
+    let cols = (((avail + gap) / (CARD_W + gap)) as usize).max(1);
+    let width = ((avail - gap * (cols - 1) as f32) / cols as f32 - 2.0).floor();
+    for row in items.chunks(cols) {
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = gap;
+            row.iter().for_each(|it| card(ui, it, width))
+        });
+        ui.add_space(4.0);
+    }
+}
+
+/// A skin card: full-bleed art with a chamfered corner, then `body`.
+/// The card itself takes no clicks, so buttons inside keep theirs.
+fn card(
+    ui: &mut egui::Ui,
+    width: f32,
+    image: &Path,
+    dim: bool,
+    active: bool,
+    body: impl FnOnce(&mut egui::Ui),
+) -> egui::Response {
+    let resp = egui::Frame::new()
+        .fill(PANEL)
+        .show(ui, |ui| {
+            ui.vertical(|ui| {
+                ui.set_width(width);
+                ui.spacing_mut().item_spacing.y = 6.0;
+                let (art, _) = ui.allocate_exact_size(Vec2::new(width, width), Sense::hover());
+                paint_image(ui, image, art, dim);
+                // Clip the top-left corner like the game's panels.
+                let c = art.left_top();
+                ui.painter().add(egui::Shape::convex_polygon(
+                    vec![c, c + Vec2::new(CHAMFER, 0.0), c + Vec2::new(0.0, CHAMFER)],
+                    VOID,
+                    Stroke::NONE,
+                ));
+                if active {
+                    let tag = egui::Rect::from_min_size(
+                        art.left_top() + Vec2::new(CHAMFER - 4.0, 8.0),
+                        Vec2::new(70.0, 22.0),
+                    );
+                    ui.painter().add(egui::Shape::convex_polygon(
+                        slanted(tag, 6.0),
+                        YELLOW,
+                        Stroke::NONE,
+                    ));
+                    ui.painter().text(
+                        tag.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "Swapped",
+                        font("medium", 13.0),
+                        INK,
+                    );
+                }
+                egui::Frame::new()
+                    .inner_margin(egui::Margin {
+                        left: 10,
+                        right: 10,
+                        top: 2,
+                        bottom: 10,
+                    })
+                    .show(ui, |ui| ui.vertical(body));
+            })
+        })
+        .response;
+    // Border follows the clipped corner.
+    let r = resp.rect.shrink(if active { 1.0 } else { 0.5 });
+    let c = CHAMFER - 0.5;
+    ui.painter().add(egui::Shape::closed_line(
+        vec![
+            r.left_top() + Vec2::new(c, 0.0),
+            r.right_top(),
+            r.right_bottom(),
+            r.left_bottom(),
+            r.left_top() + Vec2::new(0.0, c),
+        ],
+        Stroke::new(
+            if active { 2.0 } else { 1.0 },
+            if active { YELLOW } else { LINE },
+        ),
+    ));
+    resp
+}
+
+// ---------------------------------------------------------------------------
+// Frame
+// ---------------------------------------------------------------------------
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -569,143 +837,90 @@ impl eframe::App for App {
             let s = self.h.shared.lock().unwrap();
             (s.busy, s.status.clone(), s.error.clone(), s.update.clone())
         };
+        let characters = self.h.with(|s| s.characters.clone());
 
-        egui::Panel::top("top")
-            .frame(
-                egui::Frame::new()
-                    .fill(CARD)
-                    .inner_margin(egui::Margin::symmetric(16, 10)),
-            )
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new("Rivals Swapper")
-                            .size(22.0)
-                            .strong()
-                            .color(ACCENT),
-                    );
-                    if let Some(st) = &status {
-                        ui.add_space(12.0);
-                        ui.spinner();
-                        ui.label(RichText::new(st).color(DIM));
-                    } else if busy {
-                        ui.add_space(12.0);
-                        ui.spinner();
-                    }
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Settings").clicked() {
-                            self.paks_input = self.h.with(|s| s.settings.game_paks_dir.clone());
-                            self.settings_open = true;
-                        }
-                        if ui.selectable_label(self.log_open, "Log").clicked() {
-                            self.log_open = !self.log_open;
-                        }
-                        let has_swaps = self.h.with(|s| !s.settings.active_swaps.is_empty());
-                        if ui
-                            .add_enabled(!busy && has_swaps, egui::Button::new("Remove All"))
-                            .clicked()
-                        {
-                            self.confirm_remove_all = true;
-                        }
-                        if ui
-                            .add_enabled(!busy, egui::Button::new("Launch"))
-                            .on_hover_text("Start Marvel Rivals")
-                            .clicked()
-                        {
-                            self.launch();
-                        }
-                    });
-                });
-            });
-
+        self.top_bar(ui, busy, status.as_deref());
         if let Some((tag, url)) = &update {
             egui::Panel::top("update")
                 .frame(
                     egui::Frame::new()
-                        .fill(Color32::from_rgb(0x1a, 0x2a, 0x1a))
-                        .inner_margin(8),
+                        .fill(RAISED)
+                        .inner_margin(egui::Margin::symmetric(20, 8)),
                 )
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(format!("Rivals Swapper {tag} is available."));
-                        ui.hyperlink_to("Download", url);
-                        if ui.small_button("✕").clicked() {
-                            self.h.with(|s| s.update = None);
-                        }
+                        ui.label(format!("Rivals Swapper {tag} is out."));
+                        ui.hyperlink_to("Download it", url);
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("Dismiss").clicked() {
+                                self.h.with(|s| s.update = None);
+                            }
+                        });
                     });
                 });
         }
+        self.activity(ui);
 
-        if self.log_open {
-            egui::Panel::bottom("log")
-                .resizable(true)
-                .default_size(160.0)
-                .frame(egui::Frame::new().fill(CARD).inner_margin(10))
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new("Log").strong().color(DIM));
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.small_button("✕").clicked() {
-                                self.log_open = false;
-                            }
-                            if ui.small_button("Clear").clicked() {
-                                self.h.with(|s| s.log.clear());
-                            }
-                        });
-                    });
-                    egui::ScrollArea::vertical()
-                        .stick_to_bottom(true)
-                        .auto_shrink(false)
-                        .show(ui, |ui| {
-                            for line in &self.h.shared.lock().unwrap().log {
-                                let color = if line.contains("[ERROR]") {
-                                    RED
-                                } else if line.contains("[WARN]") {
-                                    ACCENT
-                                } else {
-                                    DIM
-                                };
-                                ui.label(RichText::new(line).monospace().color(color));
-                            }
-                        });
-                });
+        if error.is_none() && !characters.is_empty() {
+            egui::Panel::left("roster")
+                .resizable(false)
+                .exact_size(264.0)
+                .frame(egui::Frame::new().fill(PANEL).inner_margin(egui::Margin {
+                    left: 14,
+                    right: 10,
+                    top: 16,
+                    bottom: 10,
+                }))
+                .show(ui, |ui| self.roster(ui, &characters));
         }
 
         egui::CentralPanel::default()
-            .frame(
-                egui::Frame::new()
-                    .fill(BG)
-                    .inner_margin(egui::Margin::symmetric(20, 14)),
-            )
+            .frame(egui::Frame::new().fill(VOID).inner_margin(egui::Margin {
+                left: 32,
+                right: 24,
+                top: 22,
+                bottom: 12,
+            }))
             .show(ui, |ui| {
                 if let Some(err) = error {
-                    ui.vertical_centered(|ui| {
-                        ui.add_space(120.0);
-                        ui.label(RichText::new(err).size(16.0));
-                        if ui.button("Open Settings").clicked() {
-                            self.paks_input = self.h.with(|s| s.settings.game_paks_dir.clone());
-                            self.settings_open = true;
-                        }
-                    });
+                    self.notice(
+                        ui,
+                        "Marvel Rivals wasn't found",
+                        &err,
+                        Some("Choose the Paks folder"),
+                    );
                     return;
                 }
-                let characters = self.h.with(|s| s.characters.clone());
                 if characters.is_empty() {
                     ui.vertical_centered(|ui| {
-                        ui.add_space(160.0);
+                        ui.add_space(ui.available_height() * 0.35);
                         ui.spinner();
                         ui.label(
-                            RichText::new(status.unwrap_or_else(|| "Loading…".into())).color(DIM),
+                            RichText::new(
+                                status
+                                    .clone()
+                                    .unwrap_or_else(|| "Reading the game's hero list…".into()),
+                            )
+                            .color(MUTED),
                         );
                     });
                     return;
                 }
-                match self.view.clone() {
-                    View::Heroes => self.hero_grid(ui, &characters),
-                    View::Skins(id) => match characters.iter().find(|c| c.char_id == id) {
-                        Some(c) => self.skin_grid(ui, c, busy),
-                        None => self.view = View::Heroes,
-                    },
+                let selected = self
+                    .selected
+                    .clone()
+                    .and_then(|id| characters.iter().find(|c| c.char_id == id).cloned());
+                match selected.or_else(|| characters.first().cloned()) {
+                    Some(c) => {
+                        self.selected = Some(c.char_id.clone());
+                        self.stage(ui, &c, busy);
+                    }
+                    None => self.notice(
+                        ui,
+                        "No heroes found",
+                        "The game files didn't list any heroes.",
+                        None,
+                    ),
                 }
             });
 
@@ -714,17 +929,164 @@ impl eframe::App for App {
 }
 
 impl App {
-    fn hero_grid(&mut self, ui: &mut egui::Ui, characters: &[Character]) {
+    fn top_bar(&mut self, ui: &mut egui::Ui, busy: bool, status: Option<&str>) {
+        egui::Panel::top("top")
+            .exact_size(58.0)
+            .frame(
+                egui::Frame::new()
+                    .fill(VOID)
+                    .inner_margin(egui::Margin::symmetric(20, 0))
+                    .stroke(Stroke::new(1.0, LINE)),
+            )
+            .show(ui, |ui| {
+                ui.horizontal_centered(|ui| {
+                    // The logo, cropped to its artwork (the PNG is mostly padding).
+                    let (mark, _) = ui.allocate_exact_size(Vec2::new(54.0, 31.0), Sense::hover());
+                    egui::Image::new(egui::include_image!("../assets/RivalsIcon_NoOutline.png"))
+                        .uv(egui::Rect::from_min_max(
+                            egui::pos2(0.08, 0.26),
+                            egui::pos2(0.92, 0.74),
+                        ))
+                        .paint_at(ui, mark);
+                    ui.label(
+                        RichText::new("Rivals Swapper")
+                            .font(font("display", 26.0))
+                            .color(TEXT),
+                    );
+                    ui.add_space(16.0);
+                    if status.is_some() || busy {
+                        ui.spinner();
+                        ui.label(RichText::new(status.unwrap_or("Working…")).color(MUTED));
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if slant_button(ui, "Launch game", Tone::Primary, true, 0.0)
+                            .on_hover_text("Start Marvel Rivals through Steam")
+                            .clicked()
+                        {
+                            self.launch();
+                        }
+                        ui.add_space(6.0);
+                        if slant_button(ui, "Settings", Tone::Ghost, true, 0.0).clicked() {
+                            self.open_settings();
+                        }
+                    });
+                });
+            });
+    }
+
+    fn open_settings(&mut self) {
+        self.paks_input = self.h.with(|s| s.settings.game_paks_dir.clone());
+        self.settings_open = true;
+    }
+
+    /// Latest log line in a strip at the bottom; the full log opens above it.
+    fn activity(&mut self, ui: &mut egui::Ui) {
+        let log = self.h.with(|s| s.log.clone());
+        let color = |line: &str| {
+            if line.contains("[ERROR]") {
+                RED
+            } else if line.contains("[WARN]") {
+                YELLOW
+            } else {
+                MUTED
+            }
+        };
+        egui::Panel::bottom("activity")
+            .exact_size(36.0)
+            .frame(
+                egui::Frame::new()
+                    .fill(PANEL)
+                    .inner_margin(egui::Margin::symmetric(20, 0))
+                    .stroke(Stroke::new(1.0, LINE)),
+            )
+            .show(ui, |ui| {
+                ui.horizontal_centered(|ui| {
+                    let last = log.last().map(|l| l.trim().to_string()).unwrap_or_else(|| {
+                        "Pick a hero, then a skin to swap onto their default skin.".into()
+                    });
+                    let toggle = if self.log_open {
+                        "Hide log"
+                    } else {
+                        "Show log"
+                    };
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .add_enabled(!log.is_empty(), egui::Button::new(toggle).frame(false))
+                            .clicked()
+                        {
+                            self.log_open = !self.log_open;
+                        }
+                        ui.with_layout(egui::Layout::left_to_right(egui::Align::Center), |ui| {
+                            ui.add(
+                                egui::Label::new(RichText::new(&last).color(color(&last)))
+                                    .truncate(),
+                            );
+                        });
+                    });
+                });
+            });
+        if self.log_open {
+            egui::Panel::bottom("log")
+                .resizable(true)
+                .default_size(150.0)
+                .frame(
+                    egui::Frame::new()
+                        .fill(PANEL)
+                        .inner_margin(egui::Margin::symmetric(20, 10)),
+                )
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Log").font(font("medium", 15.0)));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            if ui.small_button("Clear").clicked() {
+                                self.h.with(|s| s.log.clear());
+                                self.log_open = false;
+                            }
+                        });
+                    });
+                    egui::ScrollArea::vertical()
+                        .stick_to_bottom(true)
+                        .auto_shrink(false)
+                        .show(ui, |ui| {
+                            for line in &log {
+                                ui.label(RichText::new(line).monospace().color(color(line)));
+                            }
+                        });
+                });
+        }
+    }
+
+    /// Centered message with an optional way out.
+    fn notice(&mut self, ui: &mut egui::Ui, title: &str, body: &str, action: Option<&str>) {
+        ui.vertical_centered(|ui| {
+            ui.add_space(ui.available_height() * 0.3);
+            ui.label(RichText::new(title).heading());
+            ui.add_space(4.0);
+            ui.label(RichText::new(body).color(MUTED));
+            if let Some(action) = action {
+                ui.add_space(12.0);
+                if slant_button(ui, action, Tone::Primary, true, 0.0).clicked() {
+                    self.open_settings();
+                }
+            }
+        });
+    }
+
+    fn roster(&mut self, ui: &mut egui::Ui, characters: &[Character]) {
+        let settings = self.h.with(|s| s.settings.clone());
+        ui.add(
+            egui::TextEdit::singleline(&mut self.search)
+                .hint_text("Find a hero")
+                .desired_width(f32::INFINITY)
+                .margin(Vec2::new(10.0, 8.0)),
+        );
+        ui.add_space(2.0);
         ui.horizontal(|ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut self.search)
-                    .hint_text("Search heroes…")
-                    .desired_width(260.0),
-            );
-            ui.checkbox(&mut self.swapped_only, "Swapped only");
+            ui.selectable_value(&mut self.swapped_only, false, "All heroes");
+            let n = settings.active_swaps.len();
+            ui.selectable_value(&mut self.swapped_only, true, format!("Swapped ({n})"));
         });
         ui.add_space(6.0);
-        let settings = self.h.with(|s| s.settings.clone());
         let query = self.search.to_lowercase();
         let shown: Vec<&Character> = characters
             .iter()
@@ -736,77 +1098,99 @@ impl App {
         egui::ScrollArea::vertical()
             .auto_shrink(false)
             .show(ui, |ui| {
-                rows(ui, &shown, |ui, c| {
-                    let swapped = settings.swaps_for(&c.char_id).count();
-                    let border = if swapped > 0 { GREEN } else { BORDER };
-                    let resp = card(ui, CARD_W, border, |ui| {
-                        thumb(ui, &images::portrait(&c.char_id), 140.0, false);
-                        ui.label(RichText::new(&c.name).strong());
-                        let sub = if swapped > 0 {
-                            RichText::new(format!("{swapped} swapped")).color(GREEN)
+                if shown.is_empty() {
+                    ui.label(
+                        RichText::new(if self.swapped_only {
+                            "Nothing swapped yet."
                         } else {
-                            RichText::new(format!("{} skins", c.alt_skins().count())).color(DIM)
-                        };
-                        ui.label(sub.small());
-                    });
-                    if clickable(ui, resp).clicked() {
-                        self.view = View::Skins(c.char_id.clone());
+                            "No hero matches that name."
+                        })
+                        .color(MUTED),
+                    );
+                }
+                for c in shown {
+                    let selected = self.selected.as_deref() == Some(c.char_id.as_str());
+                    let swapped = settings.swaps_for(&c.char_id).next().is_some();
+                    if roster_row(ui, c, selected, swapped).clicked() {
+                        self.selected = Some(c.char_id.clone());
                     }
-                });
+                }
             });
     }
 
-    fn skin_grid(&mut self, ui: &mut egui::Ui, c: &Character, busy: bool) {
-        ui.horizontal(|ui| {
-            if ui.button("← Heroes").clicked() {
-                self.view = View::Heroes;
-            }
-            ui.label(RichText::new(&c.name).size(20.0).strong());
-        });
-        ui.add_space(6.0);
+    /// The selected hero: name, what's swapped, and their skins.
+    fn stage(&mut self, ui: &mut egui::Ui, c: &Character, busy: bool) {
         let settings = self.h.with(|s| s.settings.clone());
+        let current = settings.swaps_for(&c.char_id).next().cloned();
         let mut action: Option<Result<Skin, String>> = None; // Ok = swap, Err(id) = remove
+
+        ui.label(
+            RichText::new(&c.name)
+                .font(font("display", 46.0))
+                .color(TEXT),
+        );
+        ui.horizontal(|ui| match &current {
+            Some(rec) => {
+                ui.label(
+                    RichText::new(format!(
+                        "Wearing {}. Equip {}'s default skin in-game to see it.",
+                        rec.skin_name, c.name
+                    ))
+                    .color(TEXT),
+                );
+                if slant_button(ui, "Remove swap", Tone::Ghost, !busy, 0.0).clicked() {
+                    action = Some(Err(rec.skin_id.clone()));
+                }
+            }
+            None => {
+                let n = c.alt_skins().filter(|s| s.swappable).count();
+                ui.label(
+                    RichText::new(format!("Default skin. {n} skins can be swapped onto it."))
+                        .color(MUTED),
+                );
+            }
+        });
+        if c.texture_risk {
+            ui.add_space(8.0);
+            texture_warning(ui, &c.name);
+        }
+        ui.add_space(14.0);
+
         let skins: Vec<&Skin> = c.alt_skins().collect();
-        egui::ScrollArea::vertical()
-            .auto_shrink(false)
-            .show(ui, |ui| {
-                rows(ui, &skins, |ui, skin| {
-                    let active = settings.active_swaps.contains_key(&skin.id);
-                    let border = if active { GREEN } else { BORDER };
-                    card(ui, CARD_W, border, |ui| {
-                        thumb(ui, &images::skin(&skin.id), 140.0, !skin.swappable);
-                        ui.add(egui::Label::new(RichText::new(&skin.name).strong()).truncate())
-                            .on_hover_text(&skin.name);
-                        if skin.retexture {
-                            ui.label(RichText::new("Recolor").small().color(DIM))
-                                .on_hover_text(
-                                    "Swapped as the skin it recolors, with this skin's materials.",
-                                );
-                        }
-                        if active {
-                            let b =
-                                egui::Button::new(RichText::new("Remove").color(Color32::WHITE))
-                                    .fill(RED)
-                                    .min_size(Vec2::new(120.0, 0.0));
-                            if ui.add_enabled(!busy, b).clicked() {
-                                action = Some(Err(skin.id.clone()));
-                            }
-                        } else if skin.swappable {
-                            let b = egui::Button::new(RichText::new("Swap").color(Color32::BLACK))
-                                .fill(ACCENT)
-                                .min_size(Vec2::new(120.0, 0.0));
-                            if ui.add_enabled(!busy, b).clicked() {
-                                action = Some(Ok((*skin).clone()));
-                            }
-                        } else {
-                            ui.label(RichText::new("Not swappable").small().color(DIM))
-                                .on_hover_text(
-                                    "The game files have no mesh or skin blueprint for this skin.",
-                                );
-                        }
+        egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
+            rows(ui, &skins, |ui, skin, width| {
+                let active = settings.active_swaps.contains_key(&skin.id);
+                card(ui, width, &images::skin(&skin.id), !skin.swappable, active, |ui| {
+                    ui.add(egui::Label::new(RichText::new(&skin.name).font(font("medium", 15.5))).truncate()).on_hover_text(&skin.name);
+                    let note = if !skin.swappable {
+                        "Not in the game files"
+                    } else if skin.retexture {
+                        "Recolor"
+                    } else {
+                        "Own model"
+                    };
+                    ui.label(RichText::new(note).small().color(MUTED)).on_hover_text(match note {
+                        "Recolor" => "Swapped as the skin it recolors, with this skin's materials.",
+                        "Not in the game files" => "The game files have no model for this skin, so it can't be swapped.",
+                        _ => "This skin has its own model.",
                     });
+                    ui.add_space(2.0);
+                    let w = ui.available_width();
+                    if active {
+                        if slant_button(ui, "Remove", Tone::Danger, !busy, w).clicked() {
+                            action = Some(Err(skin.id.clone()));
+                        }
+                    } else if skin.swappable {
+                        let label = if current.is_some() { "Swap instead" } else { "Swap" };
+                        if slant_button(ui, label, Tone::Primary, !busy, w).clicked() {
+                            action = Some(Ok((*skin).clone()));
+                        }
+                    } else {
+                        slant_button(ui, "Unavailable", Tone::Ghost, false, w);
+                    }
                 });
             });
+        });
         match action {
             Some(Ok(skin)) => self.start_swap(c.clone(), skin),
             Some(Err(id)) => self.remove_swaps(vec![id]),
@@ -817,21 +1201,19 @@ impl App {
     fn dialogs(&mut self, ctx: &egui::Context) {
         if self.confirm_remove_all {
             let count = self.h.with(|s| s.settings.active_swaps.len());
-            egui::Modal::new(egui::Id::unique("remove_all")).show(ctx, |ui| {
-                ui.label(format!(
-                    "Remove all {count} active swap(s) and delete their mod files?"
-                ));
+            egui::Modal::new(egui::Id::unique("remove_all")).frame(dialog_frame()).show(ctx, |ui| {
+                ui.set_width(380.0);
+                ui.label(RichText::new("Remove every swap?").heading());
+                ui.label(RichText::new(format!("This deletes the {count} swap mod(s) from ~mods. Heroes go back to their default look.")).color(MUTED));
+                ui.add_space(8.0);
                 ui.horizontal(|ui| {
-                    if ui.button(RichText::new("Remove all").color(RED)).clicked() {
-                        let ids = self
-                            .h
-                            .with(|s| s.settings.active_swaps.keys().cloned().collect());
+                    if slant_button(ui, "Remove all", Tone::Danger, true, 0.0).clicked() {
+                        let ids = self.h.with(|s| s.settings.active_swaps.keys().cloned().collect());
                         self.log_open = true;
                         self.remove_swaps(ids);
-                        self.view = View::Heroes;
                         self.confirm_remove_all = false;
                     }
-                    if ui.button("Cancel").clicked() {
+                    if slant_button(ui, "Keep them", Tone::Ghost, true, 0.0).clicked() {
                         self.confirm_remove_all = false;
                     }
                 });
@@ -839,18 +1221,13 @@ impl App {
         }
 
         if self.settings_open {
-            egui::Modal::new(egui::Id::unique("settings")).show(ctx, |ui| {
+            egui::Modal::new(egui::Id::unique("settings")).frame(dialog_frame()).show(ctx, |ui| {
                 ui.set_width(560.0);
-                ui.heading("Settings");
-                ui.label(
-                    RichText::new(
-                        "Game Paks folder (…/MarvelRivals/MarvelGame/Marvel/Content/Paks)",
-                    )
-                    .color(DIM),
-                );
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.paks_input).desired_width(f32::INFINITY),
-                );
+                ui.label(RichText::new("Settings").heading());
+                ui.add_space(6.0);
+                ui.label(RichText::new("Game Paks folder").font(font("medium", 15.0)));
+                ui.label(RichText::new("…/MarvelRivals/MarvelGame/Marvel/Content/Paks").small().color(MUTED));
+                ui.add(egui::TextEdit::singleline(&mut self.paks_input).desired_width(f32::INFINITY).margin(Vec2::new(10.0, 8.0)));
                 let valid = is_paks_dir(Path::new(&self.paks_input));
                 ui.horizontal(|ui| {
                     if ui.button("Browse…").clicked()
@@ -858,25 +1235,32 @@ impl App {
                     {
                         self.paks_input = dir.to_string_lossy().into_owned();
                     }
-                    if ui.button("Auto-detect").clicked() {
+                    if ui.button("Find it for me").clicked() {
                         match find_game_paks() {
                             Some(p) => self.paks_input = p.to_string_lossy().into_owned(),
-                            None => self.h.log(
-                                "[WARN] Couldn't find Marvel Rivals in your Steam libraries."
-                                    .into(),
-                            ),
+                            None => self.h.log("[WARN] Marvel Rivals isn't in any Steam library found on this computer.".into()),
                         }
                     }
                     if !self.paks_input.is_empty() && !valid {
-                        ui.label(RichText::new("No .utoc files in this folder").color(RED));
+                        ui.label(RichText::new("This folder has no game files (.utoc).").color(RED));
                     }
+                });
+                ui.add_space(8.0);
+                let has_swaps = self.h.with(|s| !s.settings.active_swaps.is_empty());
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new("Swaps").font(font("medium", 15.0)));
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.add_enabled(has_swaps, egui::Button::new(RichText::new("Remove every swap").color(if has_swaps { RED } else { MUTED }))).clicked() {
+                            self.settings_open = false;
+                            self.confirm_remove_all = true;
+                        }
+                    });
                 });
                 ui.separator();
                 ui.horizontal(|ui| {
-                    if ui.add_enabled(valid, egui::Button::new("Save")).clicked() {
+                    if slant_button(ui, "Save", Tone::Primary, valid, 0.0).clicked() {
                         let changed = self.h.with(|s| {
-                            let changed =
-                                s.settings.game_paks_dir != self.paks_input || s.error.is_some();
+                            let changed = s.settings.game_paks_dir != self.paks_input || s.error.is_some();
                             s.settings.game_paks_dir = self.paks_input.clone();
                             let _ = s.settings.save();
                             if changed {
@@ -890,13 +1274,119 @@ impl App {
                         }
                         self.settings_open = false;
                     }
-                    if ui.button("Cancel").clicked() {
+                    if slant_button(ui, "Cancel", Tone::Ghost, true, 0.0).clicked() {
                         self.settings_open = false;
                     }
                 });
             });
         }
     }
+}
+
+fn texture_risk_text(hero: &str) -> String {
+    format!(
+        "{hero}'s game logic puts the default skin's texture on part of the model, so a swap may show it on the wrong part. \
+         Depending on the skin it can be very noticeable, minor and easy to miss, or not show up at all."
+    )
+}
+
+/// A yellow-edged note under the hero's name, for heroes whose swaps can show
+/// the default skin's texture on part of the model.
+fn texture_warning(ui: &mut egui::Ui, hero: &str) {
+    let resp = egui::Frame::new()
+        .fill(RAISED)
+        .stroke(Stroke::new(1.0, LINE))
+        .inner_margin(egui::Margin {
+            left: 18,
+            right: 14,
+            top: 10,
+            bottom: 10,
+        })
+        .show(ui, |ui| {
+            ui.set_max_width(760.0);
+            ui.label(
+                RichText::new("Textures may be off on this hero")
+                    .font(font("medium", 15.0))
+                    .color(YELLOW),
+            );
+            ui.label(RichText::new(texture_risk_text(hero)).color(TEXT));
+        })
+        .response;
+    // Yellow edge on the left marks it as a caution, not an error.
+    let r = resp.rect;
+    ui.painter().rect_filled(
+        egui::Rect::from_min_max(r.left_top(), egui::pos2(r.left() + 4.0, r.bottom())),
+        0,
+        YELLOW,
+    );
+}
+
+fn dialog_frame() -> egui::Frame {
+    egui::Frame::new()
+        .fill(PANEL)
+        .stroke(Stroke::new(1.0, LINE))
+        .corner_radius(4)
+        .inner_margin(24)
+}
+
+/// One hero in the roster: portrait, name, and a yellow tick when swapped.
+/// The selected hero sits on a slanted yellow plate.
+fn roster_row(ui: &mut egui::Ui, c: &Character, selected: bool, swapped: bool) -> egui::Response {
+    let (rect, resp) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), 46.0), Sense::click());
+    resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Tab, true, selected, &c.name));
+    if ui.is_rect_visible(rect) {
+        let p = ui.painter();
+        if selected {
+            p.add(egui::Shape::convex_polygon(
+                slanted(rect.shrink2(Vec2::new(0.0, 2.0)), 12.0),
+                YELLOW,
+                Stroke::NONE,
+            ));
+        } else if resp.hovered() {
+            p.rect_filled(rect.shrink2(Vec2::new(0.0, 2.0)), 2, RAISED);
+        }
+        if resp.has_focus() {
+            p.rect_stroke(rect, 2, Stroke::new(1.5, TEXT), egui::StrokeKind::Inside);
+        }
+        let img =
+            egui::Rect::from_min_size(rect.left_top() + Vec2::new(14.0, 5.0), Vec2::splat(36.0));
+        // Head and shoulders of the full-body portrait.
+        let face = egui::Rect::from_min_max(egui::pos2(0.3, 0.04), egui::pos2(0.7, 0.44));
+        p.rect_filled(
+            img,
+            2,
+            if selected {
+                INK.gamma_multiply(0.15)
+            } else {
+                RAISED
+            },
+        );
+        paint_image_uv(ui, &images::portrait(&c.char_id), img, false, face);
+        let ink = if selected { INK } else { TEXT };
+        p.text(
+            img.right_center() + Vec2::new(12.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            &c.name,
+            font("medium", 15.5),
+            ink,
+        );
+        if swapped {
+            let tick = egui::Rect::from_center_size(
+                rect.right_center() - Vec2::new(22.0, 0.0),
+                Vec2::new(14.0, 8.0),
+            );
+            p.add(egui::Shape::convex_polygon(
+                slanted(tick, 4.0),
+                if selected { INK } else { YELLOW },
+                Stroke::NONE,
+            ));
+        }
+    }
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp
 }
 
 #[cfg(test)]
@@ -918,8 +1408,8 @@ mod tests {
                     ..Default::default()
                 },
                 |ui| {
-                    card(ui, CARD_W, BORDER, |ui| {
-                        let r = ui.button("Swap");
+                    card(ui, CARD_W, Path::new("missing.png"), false, false, |ui| {
+                        let r = slant_button(ui, "Swap", Tone::Primary, true, 0.0);
                         (rect, clicked) = (r.rect, r.clicked());
                     });
                 },

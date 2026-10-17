@@ -164,7 +164,11 @@ impl Game {
             .chunk_path(bundle_chunk(id))
             .with_context(|| format!("{package} not found in game files"))?;
         let rel = chunk_path.trim_start_matches("../../../");
-        let log = retoc::logging::Log::new_stdout(false, false);
+        // Only warnings and errors (retoc logs one info line per package).
+        let log = retoc::logging::Log::new(
+            retoc::logging::LogLevel::Warning,
+            Arc::new(retoc::logging::StdoutLogBackend {}),
+        );
         let ctx = FZenPackageContext::create(
             &self.store,
             None,

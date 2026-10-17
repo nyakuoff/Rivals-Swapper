@@ -9,7 +9,7 @@ use regex::Regex;
 
 use crate::{command, tools_dir, walk};
 
-const MAX_PX: u32 = 160;
+const MAX_PX: u32 = 256;
 const EXPORT_MASKS: [&str; 2] = ["img_skin_*", "img_heroportrait_*"];
 
 pub fn dir() -> PathBuf {
@@ -22,13 +22,18 @@ pub fn portrait(char_id: &str) -> PathBuf {
     dir().join(format!("portrait_{char_id}.png"))
 }
 
+/// Game build + image size: either changing re-exports the images.
+fn stamp(fingerprint: &str) -> String {
+    format!("{MAX_PX}px|{fingerprint}")
+}
+
 fn marker() -> PathBuf {
     dir().join(".fingerprint")
 }
 
 /// True when the images were exported for this exact game build.
 pub fn up_to_date(fingerprint: &str) -> bool {
-    std::fs::read_to_string(marker()).is_ok_and(|f| f == fingerprint)
+    std::fs::read_to_string(marker()).is_ok_and(|f| f == stamp(fingerprint))
 }
 
 fn wine_path(p: &Path) -> String {
@@ -75,7 +80,7 @@ pub fn export(paks_dir: &Path, fingerprint: &str, status: &dyn Fn(String)) -> Re
     if tgas.is_empty() {
         bail!("umodel exported no images");
     }
-    std::fs::write(marker(), fingerprint)?;
+    std::fs::write(marker(), stamp(fingerprint))?;
     Ok(())
 }
 

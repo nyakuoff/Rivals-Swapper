@@ -13,7 +13,7 @@ use crate::game::{Game, SkinIndex};
 
 const LOCRES_PATH: &str = "Marvel/Content/Localization/Game/en/Game.locres";
 /// Bump when the build rules change so old caches get rebuilt.
-const DB_VERSION: u32 = 3;
+const DB_VERSION: u32 = 4;
 
 /// Fixes for names the localization stores oddly: (char_id, display name).
 const CHAR_NAME_OVERRIDES: &[(&str, &str)] = &[];
@@ -35,6 +35,11 @@ pub struct Character {
     pub char_id: String,
     pub default_skin_id: String,
     pub skins: Vec<Skin>,
+    /// The default skin's blueprint points at its own body materials, which the
+    /// hero's game logic applies to a part of whatever mesh is equipped. On a
+    /// swapped mesh that part can come out with the default skin's texture.
+    #[serde(default)]
+    pub texture_risk: bool,
 }
 
 impl Character {
@@ -87,7 +92,12 @@ pub fn build_and_cache(
     fingerprint: &str,
 ) -> Result<Vec<Character>> {
     let flat = parse_locres(&game.read_pak_file(LOCRES_PATH)?)?;
-    let characters = build(&flat, game.skins());
+    let mut characters = build(&flat, game.skins());
+    let work = std::env::temp_dir().join("rivals_swapper_bp_check");
+    for c in &mut characters {
+        c.texture_risk = default_bp_uses_body_materials(game, &work, c);
+    }
+    let _ = std::fs::remove_dir_all(&work);
     let cache = Cache {
         version: DB_VERSION,
         fingerprint: fingerprint.to_string(),
@@ -98,6 +108,23 @@ pub fn build_and_cache(
     }
     std::fs::write(cache_file, serde_json::to_vec_pretty(&cache)?)?;
     Ok(cache.characters)
+}
+
+/// Whether the default skin's ChildBP references body materials of that skin
+/// (weapon and VFX materials don't matter: they aren't on the body mesh).
+fn default_bp_uses_body_materials(game: &Game, work: &Path, c: &Character) -> bool {
+    let (h, d) = (&c.char_id, &c.default_skin_id);
+    let Ok(bp) = game.extract_package(
+        &format!("/Game/Marvel/Characters/{h}/{d}/{d}_ChildBP"),
+        work,
+    ) else {
+        return false;
+    };
+    let body = format!("/Game/Marvel/Characters/{h}/{d}/Materials/");
+    crate::swap::names(&bp)
+        .unwrap_or_default()
+        .iter()
+        .any(|n| n.starts_with(&body) && !n.contains("Weapon") && !n.contains("Shield"))
 }
 
 // ---------------------------------------------------------------------------
@@ -242,46 +269,77 @@ fn title(s: &str) -> String {
         .join(" ")
 }
 
-/// Capture group 1 of `re` for every matching key, as (capture, value).
-fn matches<'a>(
-    flat: &'a HashMap<String, String>,
-    re: &'a Regex,
-) -> impl Iterator<Item = (&'a str, &'a str)> {
-    flat.iter()
-        .filter_map(|(k, v)| Some((re.captures(k)?.get(1)?.as_str(), v.as_str())))
+/// Capture group 1 of `re` for every matching key, as (capture, value), in key
+/// order so results don't depend on hash-map iteration.
+fn matches<'a>(flat: &'a HashMap<String, String>, re: &'a Regex) -> Vec<(&'a str, &'a str)> {
+    let mut keys: Vec<&String> = flat.keys().collect();
+    keys.sort();
+    keys.into_iter()
+        .filter_map(|k| Some((re.captures(k)?.get(1)?.as_str(), flat[k].as_str())))
+        .collect()
 }
 
-/// skin_id (7 digits) -> name. UISkinTable wins, then the store name
-/// (MarvelItemTable), then SkinInfo, which keeps some pre-release names.
+/// 0 = real name, 1 = internal placeholder ("[sg] … - Chroma 2"),
+/// 2 = untranslated (unreleased skins only have Chinese names).
+fn placeholder_rank(name: &str) -> u8 {
+    if name
+        .chars()
+        .any(|c| ('\u{3000}'..='\u{9fff}').contains(&c) || ('\u{ff00}'..='\u{ffef}').contains(&c))
+    {
+        2
+    } else if name.starts_with('[') || name.to_lowercase().contains("chroma") {
+        1
+    } else {
+        0
+    }
+}
+
+/// skin_id (7 digits) -> name. Several keys can name a skin; real names beat
+/// placeholders, then UISkinTable beats the store name (MarvelItemTable), then
+/// SkinInfo (some pre-release names), then store banners; within a source the
+/// last key wins. Skins with only untranslated names are left out.
 fn skin_names(flat: &HashMap<String, String>) -> HashMap<String, String> {
-    let mut out = HashMap::new();
+    // id -> (placeholder rank, source, key order, name), best = smallest
+    let mut best: HashMap<String, (u8, u8, std::cmp::Reverse<usize>, String)> = HashMap::new();
+    let mut order = 0;
+    let mut offer = |id: String, source: u8, name: &str| {
+        order += 1;
+        let cand = (
+            placeholder_rank(name),
+            source,
+            std::cmp::Reverse(order),
+            title(name),
+        );
+        match best.get(&id) {
+            Some(cur) if *cur <= cand => {}
+            _ => {
+                best.insert(id, cand);
+            }
+        }
+    };
     for (id, v) in matches(flat, &RE_SKIN_NAME) {
-        out.insert((id.parse::<u64>().unwrap_or(0) / 10).to_string(), title(v));
+        offer((id.parse::<u64>().unwrap_or(0) / 10).to_string(), 0, v);
     }
     for (id, v) in matches(flat, &RE_SKIN_ITEM) {
         if id.starts_with("10") {
-            out.entry(id.to_string()).or_insert_with(|| title(v));
+            offer(id.to_string(), 1, v);
         }
     }
     for (id, v) in matches(flat, &RE_SKIN_NAME2) {
-        out.entry((id.parse::<u64>().unwrap_or(0) / 10).to_string())
-            .or_insert_with(|| title(v));
+        offer((id.parse::<u64>().unwrap_or(0) / 10).to_string(), 2, v);
     }
     for (ids, v) in matches(flat, &RE_NEW_ARRIVAL) {
         let (ids, names): (Vec<_>, Vec<_>) = (ids.split("and").collect(), v.split(" & ").collect());
         if ids.len() == names.len() {
             for (id, name) in ids.into_iter().zip(names) {
-                out.entry(id.to_string()).or_insert_with(|| title(name));
+                offer(id.to_string(), 3, name);
             }
         }
     }
-    // Unreleased skins only have internal Chinese placeholder names.
-    out.retain(|_, name| {
-        !name.chars().any(|c| {
-            ('\u{3000}'..='\u{9fff}').contains(&c) || ('\u{ff00}'..='\u{ffef}').contains(&c)
-        })
-    });
-    out
+    best.into_iter()
+        .filter(|(_, c)| c.0 < 2)
+        .map(|(id, c)| (id, c.3))
+        .collect()
 }
 
 /// char_id (4 digits) -> name. Nameplate is authoritative, overrides beat everything.
@@ -349,6 +407,7 @@ pub fn build(flat: &HashMap<String, String>, index: &SkinIndex) -> Vec<Character
             char_id: char_id.clone(),
             default_skin_id,
             skins: vec![],
+            texture_risk: false,
         });
         for s in skins {
             if !c.skins.iter().any(|x| x.id == s.id) {
