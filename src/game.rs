@@ -161,6 +161,32 @@ impl Game {
         Ok(script_imports(&self.store, package)? == script_imports(packed.as_ref(), target)?)
     }
 
+    /// The names a package refers to, straight from its zen header (name map
+    /// plus imported package paths): no conversion to legacy format, no files
+    /// written. Import object names aren't included (zen imports are hashes).
+    pub fn header_names(&self, package: &str) -> Result<Vec<String>> {
+        let id = package_id(package);
+        let data = self.store.read(bundle_chunk(id))?;
+        let (toc, hdr) = (
+            self.store
+                .container_file_version()
+                .context("no container version")?,
+            self.store
+                .container_header_version()
+                .context("no container header version")?,
+        );
+        let header = retoc::zen::FZenPackageHeader::deserialize(
+            &mut Cursor::new(&data),
+            self.store.package_store_entry(id),
+            toc,
+            hdr,
+            None,
+        )?;
+        let mut names = header.name_map.copy_raw_names();
+        names.extend(header.imported_package_names);
+        Ok(names)
+    }
+
     /// Every package whose path starts with `prefix` ("/Game/...").
     pub fn packages_under(&self, prefix: &str) -> Vec<String> {
         self.store

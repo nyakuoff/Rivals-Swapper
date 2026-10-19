@@ -285,6 +285,13 @@ fn skin_overrides(
     let mut out: Vec<(String, HashMap<String, String>)> = game
         .packages_under(&prefix)
         .par_iter()
+        .filter(|package| {
+            // Cheap first pass on the zen header: only packages naming something
+            // in the skin's folder get the full extraction below.
+            let own = format!("/{skin}/");
+            game.header_names(package)
+                .is_ok_and(|n| n.iter().any(|n| n.contains(&own)))
+        })
         .filter_map(|package| {
             let work = work.join(format!("{:?}", std::thread::current().id()));
             let names = names(&game.extract_package(package, &work).ok()?).ok()?;
@@ -1846,4 +1853,52 @@ mod tests {
             },
         ))
     }
+}
+
+/// Performance budget (see PERF.md): the database build and a whole swap job
+/// (open the game, swap a skin with every extra, rewrite the table mods) stay
+/// well under these on the installed game. Roughly 2.4 s and 4.7 s on the
+/// machine they were measured on; budgets are about twice that.
+#[cfg(test)]
+#[test]
+#[ignore]
+fn perf_budget() {
+    use std::time::{Duration, Instant};
+    let paks = PathBuf::from(crate::settings::Settings::load().game_paks_dir);
+    let root = PathBuf::from("target/perf_budget");
+    let _ = std::fs::remove_dir_all(&root);
+    let game = Game::open(&paks).unwrap();
+    let t = Instant::now();
+    let chars = crate::db::build_and_cache(&game, &root.join("db.json"), "perf").unwrap();
+    let build = t.elapsed();
+    drop(game);
+    let c = chars.iter().find(|c| c.char_id == "1035").unwrap();
+    let skin = c.skins.iter().find(|s| s.id == "1035302").unwrap();
+    let t = Instant::now();
+    let game = Game::open(&paks).unwrap();
+    let options = SwapOptions {
+        sounds: true,
+        effects: true,
+        mvp: true,
+    };
+    create(&game, &root.join("work"), &root, c, skin, options, &|_| {}).unwrap();
+    let tables = root.join("tables");
+    write_skin_table(
+        &game,
+        &tables,
+        &root,
+        &[("1035001".into(), "1035302".into())],
+    )
+    .unwrap();
+    write_mvp_table(&game, &tables, &root, &[]).unwrap();
+    write_gallery_table(&game, &tables, &root, &[]).unwrap();
+    write_emote_tables(&game, &tables, &root, &[]).unwrap();
+    let job = t.elapsed();
+    let _ = std::fs::remove_dir_all(&root);
+    println!("database build {build:?}, swap job {job:?}");
+    assert!(
+        build < Duration::from_secs(5),
+        "database build took {build:?}"
+    );
+    assert!(job < Duration::from_secs(9), "swap job took {job:?}");
 }

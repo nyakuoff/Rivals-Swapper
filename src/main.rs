@@ -444,18 +444,20 @@ impl App {
             let paks = PathBuf::from(h.with(|s| s.settings.game_paks_dir.clone()));
             let log = |m: String| h.log(format!("  {m}"));
             log("Reading game files...".into());
-            let res = Game::open(&paks).and_then(|game| {
-                swap::create(
-                    &game,
-                    &cache_dir().join("work"),
-                    &paks.join("~mods"),
-                    &character,
-                    &skin,
-                    options,
-                    &log,
-                )
-            });
-            release_memory();
+            // Opened once for the swap and the table update after it.
+            let game = match Game::open(&paks) {
+                Ok(game) => game,
+                Err(e) => return h.log(format!("[ERROR] Swap failed: {e:#}")),
+            };
+            let res = swap::create(
+                &game,
+                &cache_dir().join("work"),
+                &paks.join("~mods"),
+                &character,
+                &skin,
+                options,
+                &log,
+            );
             match res {
                 Ok(record) => h.with(|s| {
                     // One swap per hero: they all replace the same default mesh.
@@ -477,9 +479,14 @@ impl App {
                         character.name, skin.name
                     ));
                 }),
-                Err(e) => return h.log(format!("[ERROR] Swap failed: {e:#}")),
+                Err(e) => {
+                    release_memory();
+                    return h.log(format!("[ERROR] Swap failed: {e:#}"));
+                }
             }
-            update_tables(h);
+            update_tables_with(h, Some(&game));
+            drop(game);
+            release_memory();
         });
     }
 
@@ -741,6 +748,12 @@ impl App {
 /// `swap::write_skin_table`) and the MVP table (each hero's MVP tab choice, or
 /// the swapped skin's version of the default MVP, see `swap::write_mvp_table`).
 fn update_tables(h: &Handle) {
+    update_tables_with(h, None);
+    release_memory();
+}
+
+/// `update_tables` with the game files already open (else they're opened here).
+fn update_tables_with(h: &Handle, game: Option<&Game>) {
     let (paks, blueprints, mvps, gallery, emotes) = h.with(|s| {
         // (default skin, emote id) per hero with an emote swap.
         let emotes: Vec<(String, String)> = s
@@ -846,16 +859,20 @@ fn update_tables(h: &Handle) {
         return;
     }
     h.log("  Updating the skin, MVP and emote tables...".into());
-    let res = Game::open(&paks).and_then(|game| {
+    let mut opened: Option<Game> = None;
+    let game = match game {
+        Some(game) => Ok(game),
+        None => Game::open(&paks).map(|g| &*opened.insert(g)),
+    };
+    let res = game.and_then(|game| {
         let work = cache_dir().join("table");
         Ok((
-            swap::write_skin_table(&game, &work, &mods, &blueprints)?,
-            swap::write_mvp_table(&game, &work, &mods, &mvps)?,
-            swap::write_gallery_table(&game, &work, &mods, &gallery)?,
-            swap::write_emote_tables(&game, &work, &mods, &emotes)?,
+            swap::write_skin_table(game, &work, &mods, &blueprints)?,
+            swap::write_mvp_table(game, &work, &mods, &mvps)?,
+            swap::write_gallery_table(game, &work, &mods, &gallery)?,
+            swap::write_emote_tables(game, &work, &mods, &emotes)?,
         ))
     });
-    release_memory();
     match res {
         Ok((b, m, _, e)) => h.log(format!(
             "  Tables: {b} skin blueprint(s), {m} MVP swap(s), {e} emote swap(s) in use"

@@ -170,7 +170,7 @@ pub fn build_and_cache(
                     .get(&s.id)
                     .zip(cues.get(&c.default_skin_id))
                     .is_some_and(|(own, default)| own.keys().any(|k| default.contains_key(k)));
-            s.missing_effects = variant_cues_add_effects(game, &work, &s.id, &c.default_skin_id);
+            s.missing_effects = variant_cues_add_effects(game, &s.id, &c.default_skin_id);
         }
     });
     let mvps = mvps(game, &work)?;
@@ -198,12 +198,13 @@ pub fn build_and_cache(
 /// spawn particle systems their base doesn't. The game picks those from the
 /// skin's variant number, which a swap can't hand over, so they stay default.
 /// (Most variant cues only change weapon materials or meshes.)
-fn variant_cues_add_effects(game: &Game, work: &Path, skin: &str, default: &str) -> bool {
+fn variant_cues_add_effects(game: &Game, skin: &str, default: &str) -> bool {
     let cues = &game.skins().cues;
     let (Some(own), Some(defaults)) = (cues.get(skin), cues.get(default)) else {
         return false;
     };
-    let names = |p: &str| crate::swap::names(&game.extract_package(p, work).ok()?).ok();
+    // Particle systems are imported packages, which the zen header lists.
+    let names = |p: &str| game.header_names(p).ok();
     own.iter().any(|(rel, variant)| {
         let Some(base) = VARIANT_CUE
             .captures(rel)
