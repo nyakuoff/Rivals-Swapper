@@ -10,7 +10,7 @@ use regex::Regex;
 use crate::{command, tools_dir, walk};
 
 const MAX_PX: u32 = 256;
-const EXPORT_MASKS: [&str; 2] = ["img_skin_*", "img_heroportrait_*"];
+const EXPORT_MASKS: [&str; 3] = ["img_skin_*", "img_heroportrait_*", "item_emote_*"];
 
 pub fn dir() -> PathBuf {
     crate::cache_dir().join("images")
@@ -21,10 +21,13 @@ pub fn skin(skin_id: &str) -> PathBuf {
 pub fn portrait(char_id: &str) -> PathBuf {
     dir().join(format!("portrait_{char_id}.png"))
 }
+pub fn emote(emote_id: &str) -> PathBuf {
+    dir().join(format!("emote_{emote_id}.png"))
+}
 
-/// Game build + image size: either changing re-exports the images.
+/// Game build, image size and image set: any changing re-exports the images.
 fn stamp(fingerprint: &str) -> String {
-    format!("{MAX_PX}px|{fingerprint}")
+    format!("{MAX_PX}px|{}|{fingerprint}", EXPORT_MASKS.join(","))
 }
 
 fn marker() -> PathBuf {
@@ -57,6 +60,7 @@ pub fn export(paks_dir: &Path, fingerprint: &str, status: &dyn Fn(String)) -> Re
     std::fs::create_dir_all(dir())?;
     let skin_re = Regex::new(r"(?i)img_skin_(\d{7})\.tga$")?;
     let portrait_re = Regex::new(r"(?i)img_heroportrait_(\d{4})\d{4}_portrait\.tga$")?;
+    let emote_re = Regex::new(r"(?i)item_emote_(\d{10})\.tga$")?;
     let tgas = walk(&out);
     tgas.par_iter().for_each(|tga| {
         let name = tga.file_name().unwrap_or_default().to_string_lossy();
@@ -64,6 +68,8 @@ pub fn export(paks_dir: &Path, fingerprint: &str, status: &dyn Fn(String)) -> Re
             skin(&m[1])
         } else if let Some(m) = portrait_re.captures(&name) {
             portrait(&m[1])
+        } else if let Some(m) = emote_re.captures(&name) {
+            emote(&m[1])
         } else {
             return;
         };

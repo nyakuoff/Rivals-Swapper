@@ -17,7 +17,7 @@ static VARIANT_CUE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(.*)_\d{3}_
 
 const LOCRES_PATH: &str = "Marvel/Content/Localization/Game/en/Game.locres";
 /// Bump when the build rules change so old caches get rebuilt.
-const DB_VERSION: u32 = 13;
+const DB_VERSION: u32 = 15;
 
 /// Fixes for names the localization stores oddly: (char_id, display name).
 const CHAR_NAME_OVERRIDES: &[(&str, &str)] = &[];
@@ -44,6 +44,16 @@ pub struct Skin {
     pub missing_effects: bool,
 }
 
+/// An emote in the hero's emote table.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Emote {
+    /// Emote item id: skin id + 3 digits (201 is the default emote); shared
+    /// emotes start with 9999.
+    pub id: String,
+    /// From the game's localization.
+    pub name: String,
+}
+
 /// An MVP cutscene: a level sequence named in the game's MVP table.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Mvp {
@@ -53,6 +63,13 @@ pub struct Mvp {
     pub package: String,
     /// Plays on a stage map of its own (most bought MVPs).
     pub own_stage: bool,
+}
+
+impl Emote {
+    /// Any emote but the default one (201) can replace it.
+    pub fn is_choice(&self) -> bool {
+        !self.id.ends_with("001201")
+    }
 }
 
 impl Mvp {
@@ -76,6 +93,9 @@ pub struct Character {
     /// Every MVP of the hero, the default one included.
     #[serde(default)]
     pub mvps: Vec<Mvp>,
+    /// Every emote in the hero's emote table, the default one included.
+    #[serde(default)]
+    pub emotes: Vec<Emote>,
 }
 
 impl Character {
@@ -141,6 +161,7 @@ pub fn build_and_cache(
     characters.par_iter_mut().for_each(|c| {
         let work = work.join(&c.char_id);
         c.texture_risk = default_bp_uses_body_materials(game, &work, c);
+        c.emotes = emotes(game, &work, &flat, &c.default_skin_id);
         for s in &mut c.skins {
             s.custom_sounds = has_own_sounds(game, &work, &c.char_id, &s.id);
             let cues = &game.skins().cues;
@@ -196,6 +217,37 @@ fn variant_cues_add_effects(game: &Game, work: &Path, skin: &str, default: &str)
         v.iter()
             .any(|n| n.contains("/Particles/") && !b.contains(n))
     })
+}
+
+/// The emotes in a hero's emote table (keyed by emote id), named from the
+/// localization. Unnamed ones are left out: shared entries with no name, icon
+/// or lobby row, not emotes a player can have. The default emote (`…201`) is
+/// named in its own way.
+fn emotes(game: &Game, work: &Path, flat: &HashMap<String, String>, default: &str) -> Vec<Emote> {
+    let table = format!(
+        "/Game/Marvel/Characters/{}/{default}/{default}_EmoteResTable",
+        &default[..4]
+    );
+    let Some(names) = game
+        .extract_package(&table, work)
+        .ok()
+        .and_then(|f| crate::swap::names(&f).ok())
+    else {
+        return vec![];
+    };
+    let mut out: Vec<Emote> = names
+        .into_iter()
+        .filter(|n| n.len() == 10 && n.bytes().all(|c| c.is_ascii_digit()))
+        .filter_map(|id| {
+            let name = flat
+                .get(&format!("MarvelItemTable_{id}_ItemName"))
+                .or_else(|| flat.get(&format!("UIHeroEmoteTable_{}0{}_Name", &id[..7], &id[7..])))
+                .cloned()?;
+            Some(Emote { id, name })
+        })
+        .collect();
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out
 }
 
 /// Every MVP in the game's MVP table, by id.
@@ -546,6 +598,7 @@ pub fn build(flat: &HashMap<String, String>, index: &SkinIndex) -> Vec<Character
             skins: vec![],
             texture_risk: false,
             mvps: vec![],
+            emotes: vec![],
         });
         for s in skins {
             if !c.skins.iter().any(|x| x.id == s.id) {

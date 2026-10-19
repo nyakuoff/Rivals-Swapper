@@ -483,7 +483,7 @@ pub fn write_mvp_table(
             else {
                 continue;
             };
-            let Some(row) = mvp_row(names, data, mvp_id) else {
+            let Some(row) = table_row(names, data, mvp_id) else {
                 continue;
             };
             // Same length (skin ids are 7 digits), so the patch is in place.
@@ -513,15 +513,16 @@ pub fn write_mvp_table(
     )
 }
 
-/// The byte range of the MVP table row keyed `id` in its export data: from the
-/// key's name reference to the next row key's (keys are 10-digit MVP ids).
-fn mvp_row(names: &[String], data: &[u8], id: &str) -> Option<std::ops::Range<usize>> {
+/// The byte range of the table row keyed `id` in its export data: from the
+/// key's name reference to the next row key's (keys are all-digit names of the
+/// same length, like MVP or emote ids).
+pub(crate) fn table_row(names: &[String], data: &[u8], id: &str) -> Option<std::ops::Range<usize>> {
     let u32_at = |o: usize| u32::from_le_bytes(data[o..o + 4].try_into().unwrap()) as usize;
     let is_key = |o: usize| {
         let v = u32_at(o);
         v < names.len()
             && u32_at(o + 4) == 0
-            && names[v].len() == 10
+            && names[v].len() == id.len()
             && names[v].bytes().all(|c| c.is_ascii_digit())
     };
     let index = names.iter().position(|n| n == id)?;
@@ -566,6 +567,92 @@ pub fn write_gallery_table(
         groups,
         &|_, _| {},
     )
+}
+
+/// The lobby emote table mod (shared by all heroes), and the per-hero emote
+/// table mods (`<prefix><hero>`).
+pub const EMOTE_UI_TABLE_MOD: &str = "RivalsSwapper_EmoteUITable";
+const EMOTE_UI_TABLE: &str = "/Game/Marvel/Data/DataTable/UI/HeroSkin/UIHeroEmoteTable";
+pub const EMOTE_TABLE_MOD_PREFIX: &str = "RivalsSwapper_Emotes_";
+
+/// Rewrite the emote mods for these (default skin, emote id) choices: in the
+/// hero's emote table the default emote (`<default>201`) and the chosen one
+/// trade keys, so the default emote plays the chosen one in matches, and so do
+/// their rows in the lobby emote table. Mods of heroes without a choice are
+/// removed. Returns how many heroes' emotes were swapped.
+pub fn write_emote_tables(
+    game: &Game,
+    work_dir: &Path,
+    mods_dir: &Path,
+    choices: &[(String, String)],
+) -> Result<usize> {
+    let wanted: HashSet<String> = choices
+        .iter()
+        .map(|(d, _)| format!("{EMOTE_TABLE_MOD_PREFIX}{}", &d[..4]))
+        .collect();
+    for entry in std::fs::read_dir(mods_dir).into_iter().flatten().flatten() {
+        let file = entry.file_name().to_string_lossy().into_owned();
+        let hero = file
+            .strip_prefix(EMOTE_TABLE_MOD_PREFIX)
+            .and_then(|f| f.split_once('_').map(|(hero, _)| hero));
+        if hero.is_some_and(|hero| !wanted.contains(&format!("{EMOTE_TABLE_MOD_PREFIX}{hero}"))) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+    let mut swapped = 0;
+    for (default, emote) in choices {
+        let hero = &default[..4];
+        let table = format!("/Game/Marvel/Characters/{hero}/{default}/{default}_EmoteResTable");
+        let mod_name = format!("{EMOTE_TABLE_MOD_PREFIX}{hero}");
+        let groups = vec![vec![(format!("{default}201"), emote.clone())]];
+        swapped += write_table_mod(
+            game,
+            &work_dir.join(hero),
+            mods_dir,
+            &mod_name,
+            &table,
+            groups,
+            &|_, _| {},
+        )?;
+    }
+    // The lobby table is keyed by emote id + "0" (its animations' id). Its rows
+    // also name the skin an emote belongs to (`302`, `1035302`), and the emote
+    // wheel grays out a skin's emote unless that skin is worn: the chosen row
+    // takes the default skin's instead (same lengths, patched in place).
+    let groups = choices
+        .iter()
+        .map(|(default, emote)| vec![(format!("{default}2010"), format!("{emote}0"))])
+        .collect();
+    let unlock = |names: &[String], data: &mut [u8]| {
+        for (default, emote) in choices {
+            let skin = &emote[..7];
+            if skin == default || !skin.starts_with(&default[..4]) {
+                continue;
+            }
+            let Some(row) = table_row(names, data, &format!("{emote}0")) else {
+                continue;
+            };
+            for (from, to) in [(skin, default.as_str()), (&skin[4..], &default[4..])] {
+                let (from, to) = (fstring(from), fstring(to));
+                if let Some(i) = data[row.clone()]
+                    .windows(from.len())
+                    .position(|w| w == from.as_slice())
+                {
+                    data[row.start + i..row.start + i + to.len()].copy_from_slice(&to);
+                }
+            }
+        }
+    };
+    write_table_mod(
+        game,
+        work_dir,
+        mods_dir,
+        EMOTE_UI_TABLE_MOD,
+        EMOTE_UI_TABLE,
+        groups,
+        &unlock,
+    )?;
+    Ok(swapped)
 }
 
 /// Rewrite a shared table mod: the game's `table` with each group's name pairs
@@ -863,7 +950,7 @@ fn fstring_size(d: &[u8], o: usize) -> Result<usize> {
         n.unsigned_abs() as usize * 2
     })
 }
-fn fstring(s: &str) -> Vec<u8> {
+pub(crate) fn fstring(s: &str) -> Vec<u8> {
     let mut v = ((s.len() + 1) as i32).to_le_bytes().to_vec();
     v.extend(s.as_bytes());
     v.push(0);
@@ -1529,7 +1616,7 @@ mod tests {
                     names(&table).unwrap(),
                     std::fs::read(table.with_extension("uexp")).unwrap(),
                 );
-                let row = &data[mvp_row(&names, &data, "1035001301").unwrap()];
+                let row = &data[table_row(&names, &data, "1035001301").unwrap()];
                 let has = |id: &str| {
                     row.windows(fstring(id).len())
                         .any(|w| w == fstring(id).as_slice())

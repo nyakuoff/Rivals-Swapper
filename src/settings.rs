@@ -34,6 +34,8 @@ pub struct Settings {
     pub active_swaps: BTreeMap<String, SwapRecord>,
     /// char_id -> MVP swap (one per hero; skin_id holds the MVP id)
     pub mvp_swaps: BTreeMap<String, SwapRecord>,
+    /// char_id -> emote swap (one per hero; skin_id holds the emote id)
+    pub emote_swaps: BTreeMap<String, SwapRecord>,
 }
 
 fn path() -> PathBuf {
@@ -69,11 +71,13 @@ impl Settings {
 
     /// Whether the hero has any swap: a skin or an MVP.
     pub fn is_swapped(&self, char_id: &str) -> bool {
-        self.swaps_for(char_id).next().is_some() || self.mvp_swaps.contains_key(char_id)
+        self.swaps_for(char_id).next().is_some()
+            || self.mvp_swaps.contains_key(char_id)
+            || self.emote_swaps.contains_key(char_id)
     }
 
     pub fn swap_count(&self) -> usize {
-        self.active_swaps.len() + self.mvp_swaps.len()
+        self.active_swaps.len() + self.mvp_swaps.len() + self.emote_swaps.len()
     }
 
     pub fn swaps_for(&self, char_id: &str) -> impl Iterator<Item = &SwapRecord> {

@@ -494,3 +494,71 @@ fn gallery_table_swaps_show_actors() {
     assert_eq!((seen[3].0, &seen[3].1), (seen[0].0, &seen[0].1));
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// Emote swap: in Venom's emote table the default emote and Sugar Anxiety trade
+/// keys (indexes in the packed zen tables), in matches and in the lobby. With no
+/// choices the mods are removed.
+#[cfg(test)]
+#[test]
+#[ignore]
+fn emote_tables_swap() {
+    let g = Game::open(Path::new(&crate::settings::Settings::load().game_paks_dir)).unwrap();
+    let root = PathBuf::from("target/test_emotes");
+    let _ = std::fs::remove_dir_all(&root);
+    let choices = [("1035001".to_string(), "1035302209".to_string())];
+    assert_eq!(
+        crate::swap::write_emote_tables(&g, &root.join("work"), &root, &choices).unwrap(),
+        1
+    );
+    let zen = |utoc: &str, package: &str| -> (Vec<String>, Vec<u8>) {
+        let id = package_id(package);
+        let store: Box<dyn IoStoreTrait> = if utoc.is_empty() {
+            Box::new(Store { containers: vec![] })
+        } else {
+            iostore::open(root.join(utoc), Arc::new(Config::default())).unwrap()
+        };
+        let store: &dyn IoStoreTrait = if utoc.is_empty() {
+            &g.store
+        } else {
+            store.as_ref()
+        };
+        let d = store.read(bundle_chunk(id)).unwrap();
+        let h = retoc::zen::FZenPackageHeader::deserialize(
+            &mut Cursor::new(&d),
+            store.package_store_entry(id),
+            store.container_file_version().unwrap(),
+            store.container_header_version().unwrap(),
+            None,
+        )
+        .unwrap();
+        (
+            h.name_map.copy_raw_names(),
+            d[h.summary.header_size as usize..].to_vec(),
+        )
+    };
+    let table = "/Game/Marvel/Characters/1035/1035001/1035001_EmoteResTable";
+    let (orig, _) = zen("", table);
+    let (ours, _) = zen("RivalsSwapper_Emotes_1035_9999999_P.utoc", table);
+    let at = |names: &[String], n: &str| names.iter().position(|x| x == n).unwrap();
+    assert_eq!(at(&orig, "1035001201"), at(&ours, "1035302209"));
+    assert_eq!(at(&orig, "1035302209"), at(&ours, "1035001201"));
+    let ui = "/Game/Marvel/Data/DataTable/UI/HeroSkin/UIHeroEmoteTable";
+    let (orig, _) = zen("", ui);
+    let (ours, payload) = zen("RivalsSwapper_EmoteUITable_9999999_P.utoc", ui);
+    assert_eq!(at(&orig, "10350012010"), at(&ours, "10353022090"));
+    // Sugar Anxiety's row, now under the default key, names the default skin.
+    let row = &payload[crate::swap::table_row(&ours, &payload, "10350012010").unwrap()];
+    let has = |s: &str| {
+        row.windows(crate::swap::fstring(s).len())
+            .any(|w| w == crate::swap::fstring(s).as_slice())
+    };
+    assert!(has("MarvelItemTable_1035302209_ItemName") && has("1035001") && !has("1035302"));
+    crate::swap::write_emote_tables(&g, &root.join("work"), &root, &[]).unwrap();
+    assert!(
+        std::fs::read_dir(&root)
+            .unwrap()
+            .flatten()
+            .all(|e| !e.file_name().to_string_lossy().ends_with(".utoc"))
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

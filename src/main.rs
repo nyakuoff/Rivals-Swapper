@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 
 use eframe::egui::{self, Color32, CornerRadius, RichText, Sense, Stroke, Vec2};
 
-use db::{Character, Mvp, Skin};
+use db::{Character, Emote, Mvp, Skin};
 use game::Game;
 use settings::{Settings, SwapRecord};
 
@@ -371,6 +371,13 @@ impl Handle {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum Tab {
+    Skins,
+    Mvp,
+    Emotes,
+}
+
 struct App {
     h: Handle,
     /// char_id of the hero on stage.
@@ -383,8 +390,8 @@ struct App {
     confirm_remove_all: bool,
     /// Skin waiting on the swap options prompt, with the choices so far.
     swap_prompt: Option<(Character, Skin, swap::SwapOptions)>,
-    /// The hero view shows the MVP tab instead of skins.
-    mvp_tab: bool,
+    /// Which list the hero view shows.
+    tab: Tab,
 }
 
 impl App {
@@ -419,7 +426,7 @@ impl App {
             paks_input: String::new(),
             confirm_remove_all: false,
             swap_prompt: None,
-            mvp_tab: false,
+            tab: Tab::Skins,
         }
     }
 
@@ -504,6 +511,124 @@ impl App {
                 character.name
             ));
         });
+    }
+
+    /// Make `emote` the hero's default emote (one per hero), through the emote tables.
+    fn start_emote_swap(&mut self, character: Character, emote: Emote) {
+        self.log_open = true;
+        let label = emote_label(&emote);
+        self.h.with(|s| {
+            s.log.clear();
+            s.log.push(format!(
+                "Swapping {}'s default emote -> {label} ({})",
+                character.name, emote.id
+            ));
+            let record = SwapRecord {
+                skin_id: emote.id.clone(),
+                skin_name: label.clone(),
+                char_id: character.char_id.clone(),
+                ..Default::default()
+            };
+            s.settings
+                .emote_swaps
+                .insert(character.char_id.clone(), record);
+            let _ = s.settings.save();
+        });
+        self.h.run(move |h| {
+            update_tables(h);
+            h.log(format!(
+                "Done! {}'s default emote is now {label}.",
+                character.name
+            ));
+        });
+    }
+
+    fn remove_emote_swap(&mut self, char_id: &str) {
+        self.h.with(|s| {
+            if let Some(rec) = s.settings.emote_swaps.remove(char_id) {
+                s.log.push(format!("Removed {}", rec.skin_name));
+            }
+            let _ = s.settings.save();
+        });
+        self.h.run(update_tables);
+    }
+
+    /// Emotes tab: any of the hero's emotes can replace the default emote.
+    fn emote_view(&mut self, ui: &mut egui::Ui, c: &Character, busy: bool, settings: &Settings) {
+        let current = settings.emote_swaps.get(&c.char_id);
+        let mut action: Option<Result<Emote, ()>> = None; // Ok = swap, Err = remove
+        ui.horizontal(|ui| match current {
+            Some(rec) => {
+                ui.label(
+                    RichText::new(format!("Default emote plays {}.", rec.skin_name)).color(TEXT),
+                );
+                if slant_button(ui, "Remove emote swap", Tone::Ghost, !busy, 0.0).clicked() {
+                    action = Some(Err(()));
+                }
+            }
+            None => {
+                ui.label(
+                    RichText::new("Default emote. Pick an emote to play in its place.")
+                        .color(MUTED),
+                );
+            }
+        });
+        ui.add_space(10.0);
+        let emotes: Vec<&Emote> = c.emotes.iter().filter(|e| e.is_choice()).collect();
+        egui::ScrollArea::vertical()
+            .auto_shrink(false)
+            .show(ui, |ui| {
+                rows(ui, &emotes, |ui, emote, width| {
+                    let active = current.is_some_and(|r| r.skin_id == emote.id);
+                    // The emote's icon; without one, its skin's art or the hero's portrait.
+                    let skin = &emote.id[..7];
+                    let image = [images::emote(&emote.id), images::skin(skin)]
+                        .into_iter()
+                        .find(|p| p.exists())
+                        .unwrap_or_else(|| images::portrait(&c.char_id));
+                    card(ui, width, &image, false, active, |ui| {
+                        let label = emote_label(emote);
+                        ui.add(
+                            egui::Label::new(RichText::new(&label).font(font("medium", 15.5)))
+                                .truncate(),
+                        )
+                        .on_hover_text(&label);
+                        let note = match c.skins.iter().find(|s| s.id == skin) {
+                            Some(s) if s.id == c.default_skin_id => {
+                                "Default skin emote".to_string()
+                            }
+                            Some(s) => format!("{} emote", s.name),
+                            None => "Shared emote".to_string(),
+                        };
+                        card_note(
+                            ui,
+                            &note,
+                            "Plays in place of the default emote, in matches and in the lobby.",
+                        );
+                        ui.add_space(2.0);
+                        let w = ui.available_width();
+                        if active {
+                            if slant_button(ui, "Remove", Tone::Danger, !busy, w).clicked() {
+                                action = Some(Err(()));
+                            }
+                        } else {
+                            let label = if current.is_some() {
+                                "Swap instead"
+                            } else {
+                                "Swap"
+                            };
+                            if slant_button(ui, label, Tone::Primary, !busy, w).clicked() {
+                                action = Some(Ok((*emote).clone()));
+                            }
+                        }
+                    });
+                });
+            });
+        match action {
+            Some(Ok(emote)) => self.start_emote_swap(c.clone(), emote),
+            Some(Err(())) => self.remove_emote_swap(&c.char_id),
+            None => {}
+        }
     }
 
     fn remove_mvp_swap(&mut self, char_id: &str) {
@@ -616,7 +741,18 @@ impl App {
 /// `swap::write_skin_table`) and the MVP table (each hero's MVP tab choice, or
 /// the swapped skin's version of the default MVP, see `swap::write_mvp_table`).
 fn update_tables(h: &Handle) {
-    let (paks, blueprints, mvps, gallery) = h.with(|s| {
+    let (paks, blueprints, mvps, gallery, emotes) = h.with(|s| {
+        // (default skin, emote id) per hero with an emote swap.
+        let emotes: Vec<(String, String)> = s
+            .characters
+            .iter()
+            .filter_map(|c| {
+                s.settings
+                    .emote_swaps
+                    .get(&c.char_id)
+                    .map(|r| (c.default_skin_id.clone(), r.skin_id.clone()))
+            })
+            .collect();
         let blueprints: Vec<(String, String)> = s
             .settings
             .active_swaps
@@ -684,31 +820,45 @@ fn update_tables(h: &Handle) {
             blueprints,
             mvps,
             gallery,
+            emotes,
         )
     });
     let mods = paks.join("~mods");
     let exists = |m: &str| swap::mod_files(&mods, m).iter().any(|f| f.exists());
+    let emote_mods = std::fs::read_dir(&mods)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .starts_with(swap::EMOTE_TABLE_MOD_PREFIX)
+        });
     if blueprints.is_empty()
         && mvps.is_empty()
+        && emotes.is_empty()
         && !exists(swap::SKIN_TABLE_MOD)
         && !exists(swap::MVP_TABLE_MOD)
         && !exists(swap::GALLERY_TABLE_MOD)
+        && !exists(swap::EMOTE_UI_TABLE_MOD)
+        && !emote_mods
     {
         return;
     }
-    h.log("  Updating the skin and MVP tables...".into());
+    h.log("  Updating the skin, MVP and emote tables...".into());
     let res = Game::open(&paks).and_then(|game| {
         let work = cache_dir().join("table");
         Ok((
             swap::write_skin_table(&game, &work, &mods, &blueprints)?,
             swap::write_mvp_table(&game, &work, &mods, &mvps)?,
             swap::write_gallery_table(&game, &work, &mods, &gallery)?,
+            swap::write_emote_tables(&game, &work, &mods, &emotes)?,
         ))
     });
     release_memory();
     match res {
-        Ok((b, m, _)) => h.log(format!(
-            "  Tables: {b} skin blueprint(s), {m} MVP swap(s) in use"
+        Ok((b, m, _, e)) => h.log(format!(
+            "  Tables: {b} skin blueprint(s), {m} MVP swap(s), {e} emote swap(s) in use"
         )),
         Err(e) => h.log(format!("[ERROR] Table update failed: {e:#}")),
     }
@@ -719,6 +869,11 @@ fn delete_swap(settings: &mut Settings, skin_id: &str, log: &mut Vec<String>) {
     if let Some(rec) = settings.active_swaps.remove(skin_id) {
         delete_record(&settings.game_paks_dir, &rec, log);
     }
+}
+
+/// Display name of an emote.
+fn emote_label(emote: &Emote) -> String {
+    emote.name.clone()
 }
 
 /// Display name of an MVP: the skin it belongs to and which MVP it is.
@@ -1420,15 +1575,25 @@ impl App {
         }
         ui.add_space(10.0);
         ui.horizontal(|ui| {
-            ui.selectable_value(&mut self.mvp_tab, false, "Skins");
-            let n = c.mvps.iter().filter(|m| m.is_special()).count();
-            ui.add_enabled_ui(n > 0, |ui| {
-                ui.selectable_value(&mut self.mvp_tab, true, format!("MVP ({n})"));
+            ui.selectable_value(&mut self.tab, Tab::Skins, "Skins");
+            let mvps = c.mvps.iter().filter(|m| m.is_special()).count();
+            ui.add_enabled_ui(mvps > 0, |ui| {
+                ui.selectable_value(&mut self.tab, Tab::Mvp, format!("MVP ({mvps})"));
+            });
+            let emotes = c.emotes.iter().filter(|e| e.is_choice()).count();
+            ui.add_enabled_ui(emotes > 0, |ui| {
+                ui.selectable_value(&mut self.tab, Tab::Emotes, format!("Emotes ({emotes})"));
             });
         });
         ui.add_space(8.0);
-        if self.mvp_tab && c.mvps.iter().any(Mvp::is_special) {
-            return self.mvp_view(ui, c, busy, &settings);
+        match self.tab {
+            Tab::Mvp if c.mvps.iter().any(Mvp::is_special) => {
+                return self.mvp_view(ui, c, busy, &settings);
+            }
+            Tab::Emotes if c.emotes.iter().any(Emote::is_choice) => {
+                return self.emote_view(ui, c, busy, &settings);
+            }
+            _ => {}
         }
 
         let skins: Vec<&Skin> = c.alt_skins().collect();
@@ -1452,10 +1617,6 @@ let (mut note, mut tip) = (note.to_string(), tip.to_string());
                     if skin.custom_effects && skin.swappable {
                         note += ", custom effects";
                         tip += " Its ability VFX can be swapped too.";
-                    }
-                    if skin.missing_effects && skin.swappable {
-                        note += ", some VFX stay default";
-                        tip += " Some of its effects can't be swapped: the game picks them from the skin itself, so they stay default.";
                     }
                     if c.own_mvp(&skin.id).is_some() && skin.swappable {
                         note += ", own MVP";
@@ -1579,6 +1740,7 @@ let (mut note, mut tip) = (note.to_string(), tip.to_string());
                         // MVP choices go first; removing the skin swaps rewrites the tables.
                         let ids = self.h.with(|s| {
                             s.settings.mvp_swaps.clear();
+                            s.settings.emote_swaps.clear();
                             s.settings.active_swaps.keys().cloned().collect()
                         });
                         self.log_open = true;
