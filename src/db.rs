@@ -6,6 +6,7 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 use anyhow::{Context, Result, bail};
+use rayon::prelude::*;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
@@ -13,7 +14,7 @@ use crate::game::{Game, SkinIndex};
 
 const LOCRES_PATH: &str = "Marvel/Content/Localization/Game/en/Game.locres";
 /// Bump when the build rules change so old caches get rebuilt.
-const DB_VERSION: u32 = 4;
+const DB_VERSION: u32 = 8;
 
 /// Fixes for names the localization stores oddly: (char_id, display name).
 const CHAR_NAME_OVERRIDES: &[(&str, &str)] = &[];
@@ -27,6 +28,9 @@ pub struct Skin {
     /// No mesh of its own: swapped as its base mesh with this skin's materials.
     #[serde(default)]
     pub retexture: bool,
+    /// Its sound table plays some of its own sound events (legendary skins).
+    #[serde(default)]
+    pub custom_sounds: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -94,9 +98,14 @@ pub fn build_and_cache(
     let flat = parse_locres(&game.read_pak_file(LOCRES_PATH)?)?;
     let mut characters = build(&flat, game.skins());
     let work = std::env::temp_dir().join("rivals_swapper_bp_check");
-    for c in &mut characters {
+    // Independent per hero, so check heroes in parallel (each in its own folder).
+    characters.par_iter_mut().for_each(|c| {
+        let work = work.join(&c.char_id);
         c.texture_risk = default_bp_uses_body_materials(game, &work, c);
-    }
+        for s in &mut c.skins {
+            s.custom_sounds = has_own_sounds(game, &work, &c.char_id, &s.id);
+        }
+    });
     let _ = std::fs::remove_dir_all(&work);
     let cache = Cache {
         version: DB_VERSION,
@@ -108,6 +117,26 @@ pub fn build_and_cache(
     }
     std::fs::write(cache_file, serde_json::to_vec_pretty(&cache)?)?;
     Ok(cache.characters)
+}
+
+/// Whether the skin's sound table plays any event from its own Wwise folder.
+fn has_own_sounds(game: &Game, work: &Path, hero: &str, skin: &str) -> bool {
+    let Some(table) = game
+        .skins()
+        .sound_tables
+        .get(skin)
+        .and_then(|t| t.get("SoundTable"))
+    else {
+        return false;
+    };
+    let Ok(file) = game.extract_package(table, work) else {
+        return false;
+    };
+    let own = format!("/WwiseEvents/Characters/{hero}/{skin}/");
+    crate::swap::names(&file)
+        .unwrap_or_default()
+        .iter()
+        .any(|n| n.contains(&own))
 }
 
 /// Whether the default skin's ChildBP references body materials of that skin
@@ -386,6 +415,7 @@ pub fn build(flat: &HashMap<String, String>, index: &SkinIndex) -> Vec<Character
                     id,
                     name,
                     swappable: own_mesh || retexture,
+                    custom_sounds: false,
                     retexture,
                 });
         }
@@ -497,6 +527,7 @@ mod tests {
                 .map(mesh)
                 .into(),
             blueprints: ["1035101", "1035300"].map(String::from).into(),
+            ..Default::default()
         };
         let chars = build(&parse_locres(&data).unwrap(), &index);
         assert_eq!(chars.len(), 1, "{chars:?}");

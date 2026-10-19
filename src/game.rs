@@ -37,6 +37,15 @@ pub struct SkinIndex {
     pub meshes: HashMap<String, Vec<(u8, String)>>,
     /// Skins with a {skin}_ChildBP (retextures have one but no mesh).
     pub blueprints: HashSet<String>,
+    /// Lobby (menu) meshes, same layout as `meshes`: SK_{hero}_{skin}_Lobby.
+    pub lobby: HashMap<String, Vec<(u8, String)>>,
+    /// Lobby material instances per skin: slot suffix -> package
+    /// (Materials/[form/]Lobby/MI_{skin}_{slot}). Recolors ship these without a lobby mesh.
+    pub lobby_materials: HashMap<String, HashMap<String, String>>,
+    /// Sound tables per skin: kind ("SoundTable", "GAS_SoundTable") -> package
+    /// ({skin}_{kind}). Data tables of ability sound events; legendary skins
+    /// point some abilities at their own events.
+    pub sound_tables: HashMap<String, HashMap<String, String>>,
 }
 
 impl Game {
@@ -115,7 +124,9 @@ impl Game {
 
     pub fn skins(&self) -> &SkinIndex {
         self.skins.get_or_init(|| {
-            let mesh_re = regex::Regex::new(r"Marvel/Content/(Marvel/Characters/(\d{4})/(\d{7})/Mesh(?:es)?/(?:(\d{4,5})/)?SK_\d{4,5}_(\d{7}))\.uasset$").unwrap();
+            let mesh_re = regex::Regex::new(r"Marvel/Content/(Marvel/Characters/(\d{4})/(\d{7})/Mesh(?:es)?/(?:(\d{4,5})/)?SK_\d{4,5}_(\d{7})(_Lobby)?)\.uasset$").unwrap();
+            let sound_re = regex::Regex::new(r"Marvel/Content/(Marvel/Characters/\d{4}/(\d{7})/(\d{7})_((?:GAS_)?SoundTable))\.uasset$").unwrap();
+            let lobby_mi_re = regex::Regex::new(r"Marvel/Content/(Marvel/Characters/\d{4}/(\d{7})/Materials/(?:[^/]*/)?Lobby/(?:[^/]*/)?MI_(\d{7})_([^/]+))\.uasset$").unwrap();
             let bp_re = regex::Regex::new(r"/Characters/\d{4}/(\d{7})/(\d{7})_ChildBP\.uasset$").unwrap();
             let mut index = SkinIndex::default();
             for c in self.store.chunks().filter(|c| c.id().get_chunk_type() == EIoChunkType::ExportBundleData) {
@@ -123,6 +134,18 @@ impl Game {
                 if let Some(m) = bp_re.captures(&path) {
                     if m[1] == m[2] {
                         index.blueprints.insert(m[1].to_string());
+                    }
+                    continue;
+                }
+                if let Some(m) = sound_re.captures(&path) {
+                    if m[2] == m[3] {
+                        index.sound_tables.entry(m[2].to_string()).or_default().insert(m[4].to_string(), format!("/Game/{}", &m[1]));
+                    }
+                    continue;
+                }
+                if let Some(m) = lobby_mi_re.captures(&path) {
+                    if m[2] == m[3] {
+                        index.lobby_materials.entry(m[2].to_string()).or_default().insert(m[4].to_string(), format!("/Game/{}", &m[1]));
                     }
                     continue;
                 }
@@ -139,15 +162,16 @@ impl Game {
                 };
                 let Some(form) = form else { continue };
                 let package = format!("/Game/{}", &m[1]);
-                let list = index.meshes.entry(skin.to_string()).or_default();
+                let map = if m.get(6).is_some() { &mut index.lobby } else { &mut index.meshes };
+                let list = map.entry(skin.to_string()).or_default();
                 // Prefer the mesh named after the skin when a form has several.
                 match list.iter_mut().find(|(f, _)| *f == form) {
-                    Some(slot) if m[5] == *skin && !slot.1.ends_with(skin) => slot.1 = package,
+                    Some(slot) if m[5] == *skin && !slot.1.contains(&format!("_{skin}")) => slot.1 = package,
                     Some(_) => {}
                     None => list.push((form, package)),
                 }
             }
-            for list in index.meshes.values_mut() {
+            for list in index.meshes.values_mut().chain(index.lobby.values_mut()) {
                 list.sort();
             }
             index

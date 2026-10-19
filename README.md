@@ -26,6 +26,8 @@ A Marvel Rivals skin changer tool that lets you swap character skins.
 
 A swap is a regular `~mods` mod that replaces the hero's **default** skin mesh: the source skin's mesh is moved onto the default mesh's own path and object name (`/Game/Marvel/Characters/{Hero}/{Hero}001/Meshes/...`), keeping its own materials. The game then draws it natively whenever the default skin is equipped; nothing runs in-game. Mods under `/Game/Marvel/Characters/` load as-is with the signature bypass, so they aren't encrypted.
 
+- **Lobby too.** The lobby (menu) model is replaced the same way, so the swapped skin also shows in the hero gallery and lobby.
+- **Sounds too.** Skins with their own ability sound effects (mostly legendary ones) bring them along: their sound tables replace the default skin's.
 - **One swap per hero.** Swapping another skin for the same hero replaces the previous swap.
 - **Recolors** (no mesh of their own) are swapped as the skin they recolor, with the mesh's material slots pointed at the recolor's materials.
 - **Multi-form heroes** (Hulk, Cloak & Dagger, ...) get every form replaced.

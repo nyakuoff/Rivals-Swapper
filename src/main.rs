@@ -1162,18 +1162,20 @@ impl App {
                 let active = settings.active_swaps.contains_key(&skin.id);
                 card(ui, width, &images::skin(&skin.id), !skin.swappable, active, |ui| {
                     ui.add(egui::Label::new(RichText::new(&skin.name).font(font("medium", 15.5))).truncate()).on_hover_text(&skin.name);
-                    let note = if !skin.swappable {
-                        "Not in the game files"
+                    let (note, tip) = if !skin.swappable {
+                        ("Not in the game files", "The game files have no model for this skin, so it can't be swapped.")
                     } else if skin.retexture {
-                        "Recolor"
+                        ("Recolor", "Swapped as the skin it recolors, with this skin's materials.")
                     } else {
-                        "Own model"
+                        ("Own model", "This skin has its own model.")
                     };
-                    ui.label(RichText::new(note).small().color(MUTED)).on_hover_text(match note {
-                        "Recolor" => "Swapped as the skin it recolors, with this skin's materials.",
-                        "Not in the game files" => "The game files have no model for this skin, so it can't be swapped.",
-                        _ => "This skin has its own model.",
-                    });
+let (note, tip) = if skin.custom_sounds && skin.swappable {
+                        (format!("{note}, custom sounds"), format!("{tip} Its ability sound effects are swapped too."))
+                    } else {
+                        (note.to_string(), tip.to_string())
+                    };
+
+                    ui.label(RichText::new(note).small().color(MUTED)).on_hover_text(tip);
                     ui.add_space(2.0);
                     let w = ui.available_width();
                     if active {

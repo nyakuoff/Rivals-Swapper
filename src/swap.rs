@@ -67,58 +67,109 @@ pub fn create(
             .context("The default skin's mesh wasn't found in the game files.")?;
 
         let content_dir = work_dir.join("staging/Marvel/Content");
-        // Multi-form heroes: each form's mesh replaces the default mesh of that form.
+        let none = vec![];
+        let lobby_meshes = index.lobby.get(mesh_skin).unwrap_or(&none);
+        let lobby_targets = index.lobby.get(target_id).unwrap_or(&none);
+        // In-game meshes first, then the lobby (menu) models. Multi-form heroes:
+        // each form's mesh replaces the default mesh of that form.
         let mut packed = vec![];
-        for (form, package) in meshes {
-            let Some((_, target)) = targets.iter().find(|(f, _)| f == form) else {
+        for (sources, targets, lobby) in [
+            (meshes, targets, false),
+            (lobby_meshes, lobby_targets, true),
+        ] {
+            for (form, package) in sources {
+                let Some((_, target)) = targets.iter().find(|(f, _)| f == form) else {
+                    if !lobby {
+                        log(format!(
+                            "  Skipping form {form}: the default skin has no mesh for it"
+                        ));
+                    }
+                    continue;
+                };
+                let mesh_name = package.rsplit('/').next().unwrap_or(package);
+                let renames = match &retexture {
+                    Some(r) if lobby && r.lobby_materials.is_empty() => {
+                        log("  Lobby model kept as is: this recolor has no lobby materials".into());
+                        continue;
+                    }
+                    _ => {
+                        log(format!(
+                            "Extracting {mesh_name}{}...",
+                            if *form > 0 {
+                                format!(" (form {form})")
+                            } else {
+                                String::new()
+                            }
+                        ));
+                        let mesh = game.extract_package(package, &work_dir.join("extract"))?;
+                        let renames = match &retexture {
+                            Some(r) => {
+                                let materials = if lobby {
+                                    &r.lobby_materials
+                                } else {
+                                    &r.materials
+                                };
+                                let renames = material_renames(&names(&mesh)?, materials, lobby);
+                                ensure!(
+                                    lobby || !renames.is_empty() || meshes.len() > 1,
+                                    "None of {}'s materials match the slots of {mesh_name}.",
+                                    skin.name
+                                );
+                                log(format!(
+                                    "  {} of {} materials applied",
+                                    renames.len() / 2,
+                                    materials.len()
+                                ));
+                                renames
+                            }
+                            None => HashMap::new(),
+                        };
+                        stage(&mesh, &content_dir, target)?;
+                        renames
+                    }
+                };
+                let dst = content_dir.join(target.trim_start_matches("/Game/"));
+                let old = relocate_package(&dst.with_extension("uasset"), target, &renames)?;
                 log(format!(
-                    "  Skipping form {form}: the default skin has no mesh for it"
+                    "  {}: {old} -> {target}",
+                    if lobby { "Lobby" } else { "Mesh" }
                 ));
-                continue;
-            };
-            let mesh_name = package.rsplit('/').next().unwrap_or(package);
-            log(format!(
-                "Extracting {mesh_name}{}...",
-                if *form > 0 {
-                    format!(" (form {form})")
-                } else {
-                    String::new()
-                }
-            ));
-            let mesh = game.extract_package(package, &work_dir.join("extract"))?;
-            let renames = match &retexture {
-                Some(r) => {
-                    let renames = material_renames(&names(&mesh)?, &r.materials);
-                    ensure!(
-                        !renames.is_empty() || meshes.len() > 1,
-                        "None of {}'s materials match the slots of {mesh_name}.",
-                        skin.name
-                    );
-                    log(format!(
-                        "  {} of {} materials applied",
-                        renames.len() / 2,
-                        r.materials.len()
-                    ));
-                    renames
-                }
-                None => HashMap::new(),
-            };
-            let dst = content_dir.join(target.trim_start_matches("/Game/"));
-            std::fs::create_dir_all(dst.parent().unwrap())?;
-            for ext in ["uasset", "uexp", "ubulk"] {
-                let src = mesh.with_extension(ext);
-                if src.exists() {
-                    std::fs::copy(&src, dst.with_extension(ext))?;
+                if !lobby {
+                    packed.push((*form, target.clone()));
                 }
             }
-            let old = relocate_package(&dst.with_extension("uasset"), target, &renames)?;
-            log(format!("  Mesh: {old} -> {target}"));
-            packed.push((*form, target.clone()));
         }
         ensure!(
             !packed.is_empty(),
             "The default skin has no mesh for any of this skin's forms."
         );
+
+        // Sound tables: the skin's own, or for a recolor its base skin's, each
+        // replacing the default skin's table of the same kind.
+        let sound_skin = Some(source_id)
+            .filter(|s| index.sound_tables.contains_key(*s))
+            .or_else(|| {
+                retexture
+                    .as_ref()
+                    .map(|r| &r.base_skin)
+                    .filter(|b| *b != target_id && index.sound_tables.contains_key(*b))
+            });
+        if let (Some(tables), Some(defaults)) = (
+            sound_skin.and_then(|s| index.sound_tables.get(s)),
+            index.sound_tables.get(target_id),
+        ) {
+            let mut kinds: Vec<_> = tables.iter().collect();
+            kinds.sort();
+            for (kind, package) in kinds {
+                let Some(target) = defaults.get(kind) else {
+                    continue;
+                };
+                let table = game.extract_package(package, &work_dir.join("extract"))?;
+                let dst = stage(&table, &content_dir, target)?;
+                let old = relocate_package(&dst, target, &HashMap::new())?;
+                log(format!("  Sounds: {old} -> {target}"));
+            }
+        }
 
         log("Packing IoStore mod into ~mods (UAssetTool)...".into());
         std::fs::create_dir_all(mods_dir)?;
@@ -164,11 +215,27 @@ pub fn create(
     result
 }
 
+/// Copy an extracted package (.uasset/.uexp/.ubulk) into the staging tree at
+/// `target`'s path. Returns the staged .uasset.
+fn stage(uasset: &Path, content_dir: &Path, target: &str) -> Result<PathBuf> {
+    let dst = content_dir.join(target.trim_start_matches("/Game/"));
+    std::fs::create_dir_all(dst.parent().unwrap())?;
+    for ext in ["uasset", "uexp", "ubulk"] {
+        let src = uasset.with_extension(ext);
+        if src.exists() {
+            std::fs::copy(&src, dst.with_extension(ext))?;
+        }
+    }
+    Ok(dst.with_extension("uasset"))
+}
+
 pub struct Retexture {
     /// Skin whose mesh the retexture is drawn on.
     pub base_skin: String,
     /// Material slot suffix ("Body", "Equip_01", ...) -> the retexture's MI package.
     pub materials: HashMap<String, String>,
+    /// The same for the lobby (menu) model's materials (Materials/Lobby/).
+    pub lobby_materials: HashMap<String, String>,
 }
 
 /// Read a retexture's ChildBP: the mesh skin it inherits from and the material
@@ -197,6 +264,12 @@ pub fn retexture_source(
         .collect();
 
     // A mesh set directly on the blueprint (e.g. .../1018305/Meshes/SK_1018 + FName number).
+    // Lobby materials aren't referenced by the ChildBP; they ship in Materials/Lobby.
+    let lobby_materials = index
+        .lobby_materials
+        .get(skin_id)
+        .cloned()
+        .unwrap_or_default();
     let mesh_re = regex::Regex::new(&format!(
         r"^/Game/Marvel/Characters/{char_id}/(\d{{7}})/Mesh(?:es)?/"
     ))?;
@@ -208,6 +281,7 @@ pub fn retexture_source(
         return Ok(Retexture {
             base_skin: base,
             materials,
+            lobby_materials,
         });
     }
 
@@ -232,11 +306,13 @@ pub fn retexture_source(
             return Ok(Retexture {
                 base_skin: parent.to_string(),
                 materials,
+                lobby_materials,
             });
         }
         if index.blueprints.contains(parent) && !work_dir.join(parent).exists() {
             let mut inherited = retexture_source(game, work_dir, char_id, parent)?;
             inherited.materials.extend(materials); // this skin's overrides win
+            inherited.lobby_materials.extend(lobby_materials);
             return Ok(inherited);
         }
     }
@@ -251,6 +327,7 @@ pub fn retexture_source(
 pub fn material_renames(
     mesh_names: &[String],
     materials: &HashMap<String, String>,
+    lobby: bool,
 ) -> HashMap<String, String> {
     let slot_re = regex::Regex::new(r"^MI_(?:[A-Za-z]+_)?\d{7}_(.+)$").unwrap();
     // "Equip_01" == "Equip01"; loosely, both are "equip".
@@ -263,7 +340,7 @@ pub fn material_renames(
     // (package path, object name, slot)
     let slots: Vec<(&String, &str, String)> = mesh_names
         .iter()
-        .filter(|n| n.starts_with('/') && !n.contains("/Lobby/"))
+        .filter(|n| n.starts_with('/') && n.contains("/Lobby/") == lobby)
         .filter_map(|n| {
             let obj = n.rsplit_once('/')?.1;
             Some((n, obj, slot_re.captures(obj)?[1].to_string()))
@@ -658,7 +735,7 @@ mod tests {
         ]
         .map(|s| (s.to_string(), format!("{retex}/MI_1046101_{s}")))
         .into();
-        let r = material_renames(&mesh_names, &materials);
+        let r = material_renames(&mesh_names, &materials, false);
         assert_eq!(
             r[&format!("{base}/MI_1046001_Boby")],
             format!("{retex}/MI_1046101_Body")
@@ -727,7 +804,7 @@ mod tests {
                             );
                         }
                         matched.extend(
-                            material_renames(&mesh_names[pkg], &r.materials)
+                            material_renames(&mesh_names[pkg], &r.materials, false)
                                 .into_values()
                                 .filter(|v| v.starts_with('/')),
                         );
@@ -776,6 +853,8 @@ mod tests {
         for (hero, skin_id, forms) in [
             ("1048", "1048301", 1),
             ("1048", "1048100", 1),
+            ("1048", "1048304", 1),
+            ("1035", "1035302", 1),
             ("1011", "1011300", 3),
         ] {
             let c = chars.iter().find(|c| c.char_id == hero).unwrap();
@@ -827,6 +906,52 @@ mod tests {
                     .count();
                 println!(
                     "  form {form}: {target} now uses {own} of {}'s materials",
+                    skin.name
+                );
+                assert!(own > 0, "{names:?}");
+            }
+            // Sound tables: a skin with its own sound events plays them from the
+            // default skin's table path.
+            if game.skins().sound_tables.contains_key(skin_id) {
+                let target = &game.skins().sound_tables[&c.default_skin_id]["SoundTable"];
+                let file = packed.extract_package(target, &out.join("sound")).unwrap();
+                let own = names(&file)
+                    .unwrap()
+                    .iter()
+                    .filter(|n| n.contains(&format!("/WwiseEvents/Characters/{hero}/{skin_id}/")))
+                    .count();
+                println!(
+                    "  sounds: {target} now plays {own} of {}'s own events",
+                    skin.name
+                );
+                assert!(
+                    own > 0 || skin_id != "1048304",
+                    "Psychedelic Pulse has its own sounds"
+                );
+                assert_eq!(
+                    package_identity(&file).unwrap().1,
+                    target.rsplit('/').next().unwrap()
+                );
+            }
+            // Lobby models: every form the default skin has a lobby model for.
+            let lobby = &game.skins().lobby[&c.default_skin_id];
+            for (form, target) in lobby {
+                let file = packed
+                    .extract_package(target, &out.join(format!("lobby{form}")))
+                    .unwrap();
+                assert_eq!(
+                    package_identity(&file).unwrap().1,
+                    target.rsplit('/').next().unwrap()
+                );
+                let names = names(&file).unwrap();
+                let own = names
+                    .iter()
+                    .filter(|n| {
+                        n.contains(&format!("/{skin_id}/Materials/")) && n.contains("/Lobby/")
+                    })
+                    .count();
+                println!(
+                    "  lobby form {form}: {target} now uses {own} of {}'s lobby materials",
                     skin.name
                 );
                 assert!(own > 0, "{names:?}");
