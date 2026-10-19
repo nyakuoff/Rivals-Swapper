@@ -381,6 +381,8 @@ struct App {
     settings_open: bool,
     paks_input: String,
     confirm_remove_all: bool,
+    /// Skin waiting on the swap options prompt, with the choices so far.
+    swap_prompt: Option<(Character, Skin, swap::SwapOptions)>,
 }
 
 impl App {
@@ -414,10 +416,11 @@ impl App {
             settings_open: false,
             paks_input: String::new(),
             confirm_remove_all: false,
+            swap_prompt: None,
         }
     }
 
-    fn start_swap(&mut self, character: Character, skin: Skin) {
+    fn start_swap(&mut self, character: Character, skin: Skin, options: swap::SwapOptions) {
         self.log_open = true;
         self.h.with(|s| s.log.clear());
         self.h.run(move |h| {
@@ -438,6 +441,7 @@ impl App {
                     &paks.join("~mods"),
                     &character,
                     &skin,
+                    options,
                     &log,
                 )
             });
@@ -1170,7 +1174,7 @@ impl App {
                         ("Own model", "This skin has its own model.")
                     };
 let (note, tip) = if skin.custom_sounds && skin.swappable {
-                        (format!("{note}, custom sounds"), format!("{tip} Its ability sound effects are swapped too."))
+                        (format!("{note}, custom sounds"), format!("{tip} Its ability sound effects can be swapped too."))
                     } else {
                         (note.to_string(), tip.to_string())
                     };
@@ -1194,13 +1198,60 @@ let (note, tip) = if skin.custom_sounds && skin.swappable {
             });
         });
         match action {
-            Some(Ok(skin)) => self.start_swap(c.clone(), skin),
+            // Skins with extras to bring along ask first; the rest swap straight away.
+            Some(Ok(skin)) if skin.custom_sounds => {
+                self.swap_prompt = Some((c.clone(), skin, swap::SwapOptions { sounds: true }));
+            }
+            Some(Ok(skin)) => self.start_swap(c.clone(), skin, swap::SwapOptions { sounds: true }),
             Some(Err(id)) => self.remove_swaps(vec![id]),
             None => {}
         }
     }
 
     fn dialogs(&mut self, ctx: &egui::Context) {
+        if let Some((character, skin, options)) = &mut self.swap_prompt {
+            let mut close = None;
+            let modal = egui::Modal::new(egui::Id::unique("swap_options"))
+                .frame(dialog_frame())
+                .show(ctx, |ui| {
+                    ui.set_width(380.0);
+                    ui.label(RichText::new(format!("Swap {}", skin.name)).heading());
+                    ui.label(
+                        RichText::new(format!(
+                            "{}'s default skin becomes {}. Choose what comes along with the model.",
+                            character.name, skin.name
+                        ))
+                        .color(MUTED),
+                    );
+                    ui.add_space(8.0);
+                    ui.checkbox(&mut options.sounds, "Sound effects")
+                        .on_hover_text(
+                            "This skin's own ability sound effects replace the default ones.",
+                        );
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if slant_button(ui, "Swap", Tone::Primary, true, 0.0).clicked() {
+                            close = Some(true);
+                        }
+                        if slant_button(ui, "Cancel", Tone::Ghost, true, 0.0).clicked() {
+                            close = Some(false);
+                        }
+                    });
+                });
+            // Escape or a click outside cancels.
+            if close.is_none() && modal.should_close() {
+                close = Some(false);
+            }
+            match close {
+                Some(true) => {
+                    let (character, skin, options) = self.swap_prompt.take().unwrap();
+                    self.start_swap(character, skin, options);
+                }
+                Some(false) => self.swap_prompt = None,
+                None => {}
+            }
+        }
+
         if self.confirm_remove_all {
             let count = self.h.with(|s| s.settings.active_swaps.len());
             egui::Modal::new(egui::Id::unique("remove_all")).frame(dialog_frame()).show(ctx, |ui| {

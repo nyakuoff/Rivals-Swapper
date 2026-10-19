@@ -23,12 +23,20 @@ pub fn mod_files(mods_dir: &Path, mod_name: &str) -> [PathBuf; 3] {
     ["pak", "utoc", "ucas"].map(|ext| mods_dir.join(format!("{mod_name}_9999999_P.{ext}")))
 }
 
+/// What a swap brings along besides the model.
+#[derive(Clone, Copy)]
+pub struct SwapOptions {
+    /// The skin's own ability sound effects (when it has them).
+    pub sounds: bool,
+}
+
 pub fn create(
     game: &Game,
     work_dir: &Path,
     mods_dir: &Path,
     character: &Character,
     skin: &Skin,
+    options: SwapOptions,
     log: &dyn Fn(String),
 ) -> Result<SwapRecord> {
     let (char_id, source_id, target_id) =
@@ -153,7 +161,8 @@ pub fn create(
                     .as_ref()
                     .map(|r| &r.base_skin)
                     .filter(|b| *b != target_id && index.sound_tables.contains_key(*b))
-            });
+            })
+            .filter(|_| options.sounds);
         if let (Some(tables), Some(defaults)) = (
             sound_skin.and_then(|s| index.sound_tables.get(s)),
             index.sound_tables.get(target_id),
@@ -843,6 +852,31 @@ mod tests {
     /// recolor, and a multi-form hero. Each packed mod is reopened over the game:
     /// its mesh must win at the default skin's path, under the vanilla name.
     /// Run: cargo test real_swap -- --ignored --nocapture
+    /// Unticking sound effects keeps the default skin's sounds.
+    #[test]
+    #[ignore]
+    fn swap_without_sounds() {
+        let (_, game, chars) = installed_game();
+        let c = chars.iter().find(|c| c.char_id == "1048").unwrap();
+        let skin = c.skins.iter().find(|s| s.id == "1048304").unwrap();
+        let out = std::env::temp_dir().join("rivals_swapper_nosound");
+        let _ = std::fs::remove_dir_all(&out);
+        for sounds in [true, false] {
+            let lines = std::cell::RefCell::new(vec![]);
+            create(
+                &game,
+                &out.join("work"),
+                &out,
+                c,
+                skin,
+                SwapOptions { sounds },
+                &|m| lines.borrow_mut().push(m),
+            )
+            .unwrap();
+            assert_eq!(lines.borrow().iter().any(|l| l.contains("Sounds:")), sounds);
+        }
+    }
+
     #[test]
     #[ignore]
     #[cfg(unix)]
@@ -861,9 +895,15 @@ mod tests {
             let skin = c.skins.iter().find(|s| s.id == skin_id).unwrap();
             let out = root.join(skin_id);
             let t = std::time::Instant::now();
-            let rec = create(&game, &out.join("work"), &out, c, skin, &|m| {
-                println!("{m}")
-            })
+            let rec = create(
+                &game,
+                &out.join("work"),
+                &out,
+                c,
+                skin,
+                SwapOptions { sounds: true },
+                &|m| println!("{m}"),
+            )
             .unwrap();
             println!("{} {} took {:?}", c.name, skin.name, t.elapsed());
 
