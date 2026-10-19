@@ -20,6 +20,8 @@ pub struct SwapRecord {
     pub target_skin_id: String,
     /// Replaced meshes as (hero form, vanilla package path).
     pub meshes: Vec<(u8, String)>,
+    /// The skin's ChildBP takes the default skin's row in the shared skin table.
+    pub childbp: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]

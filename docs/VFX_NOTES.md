@@ -113,3 +113,54 @@ This likely explains attempt 1 (crash and invisible effects). Cue swaps should
 be retried with this fix before trying anything else. The unanswered questions
 from attempt 2 (how the game picks a skin's cue) only matter if the retry still
 shows no effects.
+
+## Update: in-game retry (Venom Gummy Surprise)
+
+With the fix, cue swaps load: no crash, and some effects come through. Two
+gaps remained, both now understood:
+
+- **Missing ability effects.** The default skin's animation montages (e.g.
+  `103511_Attack01_MT`) carry per-skin overrides in their notifies
+  (`AnimNotifyState_TimedFXWithAO`). Each lists the default asset and the skin's
+  one (Niagara systems, Wwise events, emote materials), and the game picks by
+  the skin you wear. `swap::skin_overrides` swaps the two names in every
+  default-skin package that lists both (29 for Gummy Surprise).
+- **Body effects and colors.** These live in the skin's ChildBP: Niagara
+  components plus a `User.ChangeColor` parameter. Skin ChildBPs subclass the
+  default ChildBP, so one can't replace the other.
+  - `MarvelHeroSkinTable` names each skin's ChildBP, sound table and animation
+    data. Pointing the default row at the skin's ChildBP should give its body
+    effects and colors, with no inheritance loop.
+  - Caveats: it's one table shared by every hero, so all swaps must go into one
+    combined table mod. Mods outside `/Characters` may also need encryption.
+    Not tried yet.
+
+## Update: ultimate cue and skin blueprint (pending in-game test)
+
+- **Parent cues are no longer held back.** Only a skin cue that imports the
+  default cue it would replace is skipped, since it would inherit from itself.
+  Gummy Surprise now swaps 7 cues, its ultimate included.
+- **Skin table.** `swap::write_skin_table` builds one shared mod
+  (`RivalsSwapper_SkinTable`) from every active swap that has a blueprint. In
+  `MarvelHeroSkinTable` it swaps the default and skin ChildBP names, path and
+  `_C` class, so the default row loads the skin's ChildBP. It's rebuilt after
+  every swap and removal.
+- **Still open:** the skin-id-built buff cues (`Cue_Buff_10354101_302_BP`,
+  `Cue_Buff_10356101_302_BP`), which nothing references by name.
+
+## Update: variant cues (`<base>_<NNN>_BP`)
+
+- **What they are.** 753 skin cues are variants: `Cue_Buff_10354101_302_BP`
+  subclasses the default's `Cue_Buff_10354101_BP`. Default skins have none.
+- **How the game picks them.** The variant number is per skin but shared within
+  families: 1035304 and 1035305 use 302, many 5xx skins use 501. Nothing
+  references these cues by name, so the game builds the name at runtime. The
+  logic is in NetEase's encrypted Python archive (`script.uep`), which we don't
+  decrypt.
+- **Our guess.** The number most likely comes from the skin's blueprint, which
+  the skin table now hands to the default skin.
+- **What the swap does.** It copies each variant cue into the default skin's
+  folder under the same name (e.g. `1035001/Cues/103541/Cue_Buff_10354101_302_BP`).
+  These are new packages, so there's no self-inheritance and nothing to break if
+  the game never looks there.
+- **Status:** not yet tested in-game.

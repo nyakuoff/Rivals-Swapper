@@ -14,7 +14,7 @@ use crate::game::{Game, SkinIndex};
 
 const LOCRES_PATH: &str = "Marvel/Content/Localization/Game/en/Game.locres";
 /// Bump when the build rules change so old caches get rebuilt.
-const DB_VERSION: u32 = 8;
+const DB_VERSION: u32 = 10;
 
 /// Fixes for names the localization stores oddly: (char_id, display name).
 const CHAR_NAME_OVERRIDES: &[(&str, &str)] = &[];
@@ -31,6 +31,9 @@ pub struct Skin {
     /// Its sound table plays some of its own sound events (legendary skins).
     #[serde(default)]
     pub custom_sounds: bool,
+    /// Has ability VFX (gameplay cues) of its own that can replace the default's.
+    #[serde(default)]
+    pub custom_effects: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -104,6 +107,12 @@ pub fn build_and_cache(
         c.texture_risk = default_bp_uses_body_materials(game, &work, c);
         for s in &mut c.skins {
             s.custom_sounds = has_own_sounds(game, &work, &c.char_id, &s.id);
+            let cues = &game.skins().cues;
+            s.custom_effects = game.skins().vfx.contains(&s.id)
+                || cues
+                    .get(&s.id)
+                    .zip(cues.get(&c.default_skin_id))
+                    .is_some_and(|(own, default)| own.keys().any(|k| default.contains_key(k)));
         }
     });
     let _ = std::fs::remove_dir_all(&work);
@@ -416,6 +425,7 @@ pub fn build(flat: &HashMap<String, String>, index: &SkinIndex) -> Vec<Character
                     name,
                     swappable: own_mesh || retexture,
                     custom_sounds: false,
+                    custom_effects: false,
                     retexture,
                 });
         }

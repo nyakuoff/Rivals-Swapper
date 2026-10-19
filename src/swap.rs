@@ -28,6 +28,8 @@ pub fn mod_files(mods_dir: &Path, mod_name: &str) -> [PathBuf; 3] {
 pub struct SwapOptions {
     /// The skin's own ability sound effects (when it has them).
     pub sounds: bool,
+    /// The skin's own ability VFX (gameplay cues, when it has them).
+    pub effects: bool,
 }
 
 pub fn create(
@@ -180,40 +182,66 @@ pub fn create(
             }
         }
 
-        log("Packing IoStore mod into ~mods (UAssetTool)...".into());
-        for f in crate::walk(&content_dir)
-            .iter()
-            .filter(|f| f.extension().is_some_and(|e| e == "uasset"))
-        {
-            spell_out_script_import_numbers(f)?;
-        }
-        std::fs::create_dir_all(mods_dir)?;
-        let files = mod_files(mods_dir, &mod_name);
-        let out_base = mods_dir.join(format!("{mod_name}_9999999_P"));
-        let out = command(crate::uassettool())
-            .arg("create_mod_iostore")
-            .arg(&out_base)
-            .arg(&content_dir)
-            .output()
-            .context("running UAssetTool")?;
-        // UAssetTool often exits non-zero on harmless warnings; trust the output files.
-        if !files[1].exists() || !files[2].exists() {
-            for f in &files {
-                let _ = std::fs::remove_file(f);
-            }
-            bail!(
-                "UAssetTool create_mod_iostore failed:\n{}\n{}",
-                String::from_utf8_lossy(&out.stdout),
-                String::from_utf8_lossy(&out.stderr)
-            );
-        }
-        let [pak, utoc, ucas] = files.map(|p| {
-            if p.exists() {
-                p.to_string_lossy().into_owned()
-            } else {
-                String::new()
-            }
+        // Ability VFX: the skin's gameplay cues (or for a recolor, its base
+        // skin's) replace the default skin's cues at the same paths.
+        let cue_skin = Some(source_id)
+            .filter(|s| index.cues.contains_key(*s))
+            .or_else(|| {
+                retexture
+                    .as_ref()
+                    .map(|r| &r.base_skin)
+                    .filter(|b| *b != target_id && index.cues.contains_key(*b))
+            })
+            .filter(|_| options.effects);
+        let cues = cue_skin.map_or_else(Vec::new, |s| {
+            swappable_cues(game, &work_dir.join("cues"), s, target_id)
         });
+        for (package, target) in &cues {
+            let cue = game.extract_package(package, &work_dir.join("extract"))?;
+            let dst = stage(&cue, &content_dir, target)?;
+            relocate_package(&dst, target, &HashMap::new())?;
+        }
+        if !cues.is_empty() {
+            log(format!("  Effects: {} ability cues", cues.len()));
+        }
+
+        // Default-skin animations name per-skin overrides (effects, sounds and
+        // materials in anim notifies): the default entry takes the skin's asset.
+        let override_skin = retexture.as_ref().map_or(source_id, |r| &r.base_skin);
+        let overrides = skin_overrides(
+            game,
+            &work_dir.join("overrides"),
+            override_skin,
+            target_id,
+            options,
+        );
+        let overrides: Vec<_> = overrides
+            .into_iter()
+            .filter(|(p, _)| {
+                !content_dir
+                    .join(p.trim_start_matches("/Game/"))
+                    .with_extension("uasset")
+                    .exists()
+            })
+            .collect();
+        for (package, renames) in &overrides {
+            let file = game.extract_package(package, &work_dir.join("extract"))?;
+            let dst = stage(&file, &content_dir, package)?;
+            relocate_package(&dst, package, renames)?;
+        }
+        if !overrides.is_empty() {
+            log(format!(
+                "  Animation overrides: {} packages",
+                overrides.len()
+            ));
+        }
+
+        log("Packing IoStore mod into ~mods (UAssetTool)...".into());
+        let [pak, utoc, ucas] = pack(mods_dir, &mod_name, &content_dir)?;
+        // The skin's blueprint (body effects, effect colors) can take the default
+        // skin's place through the shared skin table; see `write_skin_table`.
+        let childbp =
+            options.effects && source_id != target_id && index.blueprints.contains(source_id);
         Ok(SwapRecord {
             skin_id: source_id.clone(),
             skin_name: skin.name.clone(),
@@ -224,7 +252,203 @@ pub fn create(
             ucas_path: ucas,
             target_skin_id: target_id.clone(),
             meshes: packed,
+            childbp,
         })
+    })();
+    let _ = std::fs::remove_dir_all(work_dir);
+    result
+}
+
+/// Default-skin packages (animations mostly) whose notifies list a per-skin
+/// override for `skin` next to the default asset, with the renames that swap
+/// the two: the default entry loads the skin's asset (and the skin's entry the
+/// default one). Effects and sounds only when the options ask for them.
+fn skin_overrides(
+    game: &Game,
+    work: &Path,
+    skin: &str,
+    default: &str,
+    options: SwapOptions,
+) -> Vec<(String, HashMap<String, String>)> {
+    use rayon::prelude::*;
+    if skin == default {
+        return vec![];
+    }
+    let prefix = format!("/Game/Marvel/Characters/{}/{default}/", &default[..4]);
+    let mut out: Vec<(String, HashMap<String, String>)> = game
+        .packages_under(&prefix)
+        .par_iter()
+        .filter_map(|package| {
+            let work = work.join(format!("{:?}", std::thread::current().id()));
+            let names = names(&game.extract_package(package, &work).ok()?).ok()?;
+            let all: HashSet<&String> = names.iter().collect();
+            let mut renames = HashMap::new();
+            for own in names.iter().filter(|n| n.contains(&format!("/{skin}/"))) {
+                let wanted = if own.contains("/Wwise") {
+                    options.sounds
+                } else if own.contains("/VFX/") {
+                    options.effects
+                } else {
+                    true
+                };
+                let base = own
+                    .replace(&format!("/{skin}/"), &format!("/{default}/"))
+                    .replace(skin, default);
+                if !wanted || !all.contains(&base) {
+                    continue;
+                }
+                // The object names differ too when they carry the skin id.
+                let (own_name, base_name) = (own.rsplit('/').next()?, base.rsplit('/').next()?);
+                let mut pairs = vec![(base.clone(), own.clone())];
+                if own_name != base_name
+                    && all.contains(&own_name.to_string())
+                    && all.contains(&base_name.to_string())
+                {
+                    pairs.push((base_name.to_string(), own_name.to_string()));
+                }
+                for (a, b) in pairs {
+                    renames.insert(b.clone(), a.clone());
+                    renames.insert(a, b);
+                }
+            }
+            (!renames.is_empty()).then(|| (package.clone(), renames))
+        })
+        .collect();
+    let _ = std::fs::remove_dir_all(work);
+    out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
+static VARIANT_CUE: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(r"^(.*)_\d{3}_BP$").unwrap());
+
+/// The skin's cues that can replace the default skin's (package, default path).
+/// A skin cue that subclasses (imports) the default cue it would replace is left
+/// out: moved onto that path it would inherit from itself.
+///
+/// Variant cues (`<base>_<NNN>_BP`, subclasses of the default's `<base>_BP`) are
+/// picked by the game from a per-skin variant number, shared within skin
+/// families (1035304 uses 302), so most likely set by the skin's blueprint (see
+/// `write_skin_table`). They're copied into the default skin's folder under the
+/// same name, for when the default skin looks for them there.
+pub fn swappable_cues(
+    game: &Game,
+    work: &Path,
+    skin: &str,
+    default: &str,
+) -> Vec<(String, String)> {
+    let index = game.skins();
+    let (Some(own), Some(defaults)) = (index.cues.get(skin), index.cues.get(default)) else {
+        return vec![];
+    };
+    let mut out: Vec<(String, String)> = own
+        .iter()
+        .filter_map(|(rel, p)| {
+            let variant_of_default = VARIANT_CUE
+                .captures(rel)
+                .is_some_and(|m| defaults.contains_key(&format!("{}_BP", &m[1])));
+            let default_dir = format!("/Game/Marvel/Characters/{}/{default}/Cues/", &default[..4]);
+            let target = match defaults.get(rel) {
+                Some(t) => t.clone(),
+                None if variant_of_default => format!("{default_dir}{rel}"),
+                None => return None,
+            };
+            let target = &target;
+            let names = names(&game.extract_package(p, work).ok()?).ok()?;
+            (!names.contains(target)).then(|| (p.clone(), target.clone()))
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+/// Pack the staging tree into `{mod_name}_9999999_P` in ~mods with UAssetTool.
+/// Returns the (pak, utoc, ucas) paths that were written.
+fn pack(mods_dir: &Path, mod_name: &str, content_dir: &Path) -> Result<[String; 3]> {
+    for f in crate::walk(content_dir)
+        .iter()
+        .filter(|f| f.extension().is_some_and(|e| e == "uasset"))
+    {
+        spell_out_script_import_numbers(f)?;
+    }
+    std::fs::create_dir_all(mods_dir)?;
+    let files = mod_files(mods_dir, mod_name);
+    let out = command(crate::uassettool())
+        .arg("create_mod_iostore")
+        .arg(mods_dir.join(format!("{mod_name}_9999999_P")))
+        .arg(content_dir)
+        .output()
+        .context("running UAssetTool")?;
+    // UAssetTool often exits non-zero on harmless warnings; trust the output files.
+    if !files[1].exists() || !files[2].exists() {
+        for f in &files {
+            let _ = std::fs::remove_file(f);
+        }
+        bail!(
+            "UAssetTool create_mod_iostore failed:\n{}\n{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    Ok(files.map(|p| {
+        if p.exists() {
+            p.to_string_lossy().into_owned()
+        } else {
+            String::new()
+        }
+    }))
+}
+
+/// The shared skin-table mod: one for every swap, since all heroes share the table.
+pub const SKIN_TABLE_MOD: &str = "RivalsSwapper_SkinTable";
+const SKIN_TABLE: &str = "/Game/Marvel/Data/DataTable/MarvelHeroSkinTable";
+
+/// Rewrite the skin-table mod for these (default skin, skin) pairs: each default
+/// skin's row takes the skin's ChildBP, which holds its body effects and the
+/// colors its effects use. Skin ChildBPs subclass the default one, so they
+/// can't be moved onto its path; pointing the row at them works instead. The
+/// skin's own row gets the default ChildBP (the names are swapped). No pairs:
+/// the mod is removed.
+pub fn write_skin_table(
+    game: &Game,
+    work_dir: &Path,
+    mods_dir: &Path,
+    pairs: &[(String, String)],
+) -> Result<usize> {
+    for f in mod_files(mods_dir, SKIN_TABLE_MOD) {
+        let _ = std::fs::remove_file(f);
+    }
+    if pairs.is_empty() {
+        return Ok(0);
+    }
+    let _ = std::fs::remove_dir_all(work_dir);
+    let result = (|| {
+        let content_dir = work_dir.join("staging/Marvel/Content");
+        let table = game.extract_package(SKIN_TABLE, &work_dir.join("extract"))?;
+        let dst = stage(&table, &content_dir, SKIN_TABLE)?;
+        let names: HashSet<String> = names(&dst)?.into_iter().collect();
+        let mut renames = HashMap::new();
+        for (default, skin) in pairs {
+            let bp = |s: &str| {
+                (
+                    format!("/Game/Marvel/Characters/{}/{s}/{s}_ChildBP", &s[..4]),
+                    format!("{s}_ChildBP_C"),
+                )
+            };
+            let ((dp, dc), (sp, sc)) = (bp(default), bp(skin));
+            if [&dp, &dc, &sp, &sc].iter().all(|n| names.contains(*n)) {
+                for (a, b) in [(dp, sp), (dc, sc)] {
+                    renames.insert(b.clone(), a.clone());
+                    renames.insert(a, b);
+                }
+            }
+        }
+        if renames.is_empty() {
+            return Ok(0);
+        }
+        relocate_package(&dst, SKIN_TABLE, &renames)?;
+        pack(mods_dir, SKIN_TABLE_MOD, &content_dir)?;
+        Ok(renames.len() / 4)
     })();
     let _ = std::fs::remove_dir_all(work_dir);
     result
@@ -1002,6 +1226,56 @@ mod tests {
         }
     }
 
+    /// The skin table points Venom's default row at Gummy Surprise's ChildBP:
+    /// the two ChildBP names trade places in the packed table's name map.
+    #[test]
+    #[ignore]
+    #[cfg(unix)]
+    fn skin_table_swaps_childbp() {
+        let paks = PathBuf::from(crate::settings::Settings::load().game_paks_dir);
+        let game = Game::open(&paks).unwrap();
+        let root = std::env::temp_dir().join("rivals_swapper_table");
+        let _ = std::fs::remove_dir_all(&root);
+        let pairs = [("1035001".to_string(), "1035302".to_string())];
+        assert_eq!(
+            write_skin_table(&game, &root.join("work"), &root, &pairs).unwrap(),
+            1
+        );
+        let utoc = &mod_files(&root, SKIN_TABLE_MOD)[1];
+        assert!(
+            game.script_imports_survive(SKIN_TABLE, utoc, SKIN_TABLE)
+                .unwrap()
+        );
+        let view = root.join("view");
+        std::fs::create_dir_all(&view).unwrap();
+        for f in std::fs::read_dir(&paks)
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.is_file())
+            .chain(mod_files(&root, SKIN_TABLE_MOD))
+        {
+            std::os::unix::fs::symlink(&f, view.join(f.file_name().unwrap())).unwrap();
+        }
+        let index = |g: &Game, dir: &str, n: &str| {
+            names(&g.extract_package(SKIN_TABLE, &root.join(dir)).unwrap())
+                .unwrap()
+                .iter()
+                .position(|x| x == n)
+                .unwrap()
+        };
+        let packed = Game::open(&view).unwrap();
+        let (d, s) = (
+            "/Game/Marvel/Characters/1035/1035001/1035001_ChildBP",
+            "/Game/Marvel/Characters/1035/1035302/1035302_ChildBP",
+        );
+        assert_eq!(index(&game, "a", d), index(&packed, "b", s));
+        assert_eq!(index(&game, "c", s), index(&packed, "d", d));
+        // No pairs: the mod is gone.
+        write_skin_table(&game, &root.join("work"), &root, &[]).unwrap();
+        assert!(mod_files(&root, SKIN_TABLE_MOD).iter().all(|f| !f.exists()));
+    }
+
     /// Unticking sound effects keeps the default skin's sounds.
     #[test]
     #[ignore]
@@ -1019,7 +1293,10 @@ mod tests {
                 &out,
                 c,
                 skin,
-                SwapOptions { sounds },
+                SwapOptions {
+                    sounds,
+                    effects: false,
+                },
                 &|m| lines.borrow_mut().push(m),
             )
             .unwrap();
@@ -1051,7 +1328,10 @@ mod tests {
                 &out,
                 c,
                 skin,
-                SwapOptions { sounds: true },
+                SwapOptions {
+                    sounds: true,
+                    effects: true,
+                },
                 &|m| println!("{m}"),
             )
             .unwrap();
@@ -1121,6 +1401,38 @@ mod tests {
                 assert_eq!(
                     package_identity(&file).unwrap().1,
                     target.rsplit('/').next().unwrap()
+                );
+            }
+            // Effects: each swapped cue reads back at the default path with every
+            // script import (Python classes included) exactly as in the game's own.
+            let cues = swappable_cues(&game, &out.join("cues"), skin_id, &c.default_skin_id);
+            let replaced: HashSet<&String> =
+                game.skins().cues[&c.default_skin_id].values().collect();
+            for (src, target) in &cues {
+                let file = packed.extract_package(target, &out.join("cue")).unwrap();
+                // Copied variant cues (new paths) may only change parameters.
+                assert!(
+                    !replaced.contains(target)
+                        || names(&file)
+                            .unwrap()
+                            .iter()
+                            .any(|n| n.contains(&format!("/{skin_id}/"))),
+                    "{target}"
+                );
+                assert!(
+                    game.script_imports_survive(src, Path::new(&rec.utoc_path), target)
+                        .unwrap(),
+                    "{target}"
+                );
+            }
+            println!("  effects: {} cues", cues.len());
+            if skin_id == "1035302" {
+                assert!(!cues.is_empty());
+                // An ability montage's notify override, packed into the mod.
+                let montage = "/Game/Marvel/Characters/1035/1035001/Animations/103511_Attack01_MT";
+                assert!(
+                    game.script_imports_survive(montage, Path::new(&rec.utoc_path), montage)
+                        .unwrap()
                 );
             }
             // Lobby models: every form the default skin has a lobby model for.

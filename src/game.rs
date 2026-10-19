@@ -46,6 +46,11 @@ pub struct SkinIndex {
     /// ({skin}_{kind}). Data tables of ability sound events; legendary skins
     /// point some abilities at their own events.
     pub sound_tables: HashMap<String, HashMap<String, String>>,
+    /// Gameplay cue blueprints per skin: path under Cues/ -> package. A skin's
+    /// cue at the same relative path as a default skin's cue is that ability's VFX.
+    pub cues: HashMap<String, HashMap<String, String>>,
+    /// Skins with particle systems of their own (VFX/Particles/Characters/{hero}/{skin}/).
+    pub vfx: HashSet<String>,
 }
 
 impl Game {
@@ -155,10 +160,26 @@ impl Game {
         Ok(script_imports(&self.store, package)? == script_imports(packed.as_ref(), target)?)
     }
 
+    /// Every package whose path starts with `prefix` ("/Game/...").
+    pub fn packages_under(&self, prefix: &str) -> Vec<String> {
+        self.store
+            .chunks()
+            .filter(|c| c.id().get_chunk_type() == EIoChunkType::ExportBundleData)
+            .filter_map(|c| c.path())
+            .filter_map(|p| {
+                let rel = p.split("Marvel/Content/").nth(1)?.strip_suffix(".uasset")?;
+                Some(format!("/Game/{rel}"))
+            })
+            .filter(|p| p.starts_with(prefix))
+            .collect()
+    }
+
     pub fn skins(&self) -> &SkinIndex {
         self.skins.get_or_init(|| {
             let mesh_re = regex::Regex::new(r"Marvel/Content/(Marvel/Characters/(\d{4})/(\d{7})/Mesh(?:es)?/(?:(\d{4,5})/)?SK_\d{4,5}_(\d{7})(_Lobby)?)\.uasset$").unwrap();
             let sound_re = regex::Regex::new(r"Marvel/Content/(Marvel/Characters/\d{4}/(\d{7})/(\d{7})_((?:GAS_)?SoundTable))\.uasset$").unwrap();
+            let vfx_re = regex::Regex::new(r"Marvel/Content/Marvel/VFX/Particles/Characters/\d{4}/(\d{7})/").unwrap();
+            let cue_re = regex::Regex::new(r"Marvel/Content/(Marvel/Characters/\d{4}/(\d{7})/Cues/(.+))\.uasset$").unwrap();
             let lobby_mi_re = regex::Regex::new(r"Marvel/Content/(Marvel/Characters/\d{4}/(\d{7})/Materials/(?:[^/]*/)?Lobby/(?:[^/]*/)?MI_(\d{7})_([^/]+))\.uasset$").unwrap();
             let bp_re = regex::Regex::new(r"/Characters/\d{4}/(\d{7})/(\d{7})_ChildBP\.uasset$").unwrap();
             let mut index = SkinIndex::default();
@@ -174,6 +195,14 @@ impl Game {
                     if m[2] == m[3] {
                         index.sound_tables.entry(m[2].to_string()).or_default().insert(m[4].to_string(), format!("/Game/{}", &m[1]));
                     }
+                    continue;
+                }
+                if let Some(m) = vfx_re.captures(&path) {
+                    index.vfx.insert(m[1].to_string());
+                    continue;
+                }
+                if let Some(m) = cue_re.captures(&path) {
+                    index.cues.entry(m[2].to_string()).or_default().insert(m[3].to_string(), format!("/Game/{}", &m[1]));
                     continue;
                 }
                 if let Some(m) = lobby_mi_re.captures(&path) {

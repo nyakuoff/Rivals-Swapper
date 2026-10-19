@@ -467,8 +467,9 @@ impl App {
                         character.name, skin.name
                     ));
                 }),
-                Err(e) => h.log(format!("[ERROR] Swap failed: {e:#}")),
+                Err(e) => return h.log(format!("[ERROR] Swap failed: {e:#}")),
             }
+            update_skin_table(h);
         });
     }
 
@@ -479,6 +480,7 @@ impl App {
             }
             let _ = s.settings.save();
         });
+        self.h.run(update_skin_table);
     }
 
     fn launch(&mut self) {
@@ -487,6 +489,37 @@ impl App {
         if let Err(e) = open::that(STEAM_URL) {
             self.h.log(format!("[ERROR] Couldn't open Steam: {e}"));
         }
+    }
+}
+
+/// Rewrite the shared skin-table mod from the active swaps (see
+/// `swap::write_skin_table`), or remove it when no swap needs it.
+fn update_skin_table(h: &Handle) {
+    let (paks, pairs): (PathBuf, Vec<(String, String)>) = h.with(|s| {
+        let pairs = s
+            .settings
+            .active_swaps
+            .values()
+            .filter(|r| r.childbp)
+            .map(|r| (r.target_skin_id.clone(), r.skin_id.clone()))
+            .collect();
+        (PathBuf::from(&s.settings.game_paks_dir), pairs)
+    });
+    let mods = paks.join("~mods");
+    if pairs.is_empty()
+        && !swap::mod_files(&mods, swap::SKIN_TABLE_MOD)
+            .iter()
+            .any(|f| f.exists())
+    {
+        return;
+    }
+    h.log("  Updating the skin table (body effects and effect colors)...".into());
+    let res = Game::open(&paks)
+        .and_then(|game| swap::write_skin_table(&game, &cache_dir().join("table"), &mods, &pairs));
+    release_memory();
+    match res {
+        Ok(n) => h.log(format!("  Skin table: {n} skin blueprint(s) in use")),
+        Err(e) => h.log(format!("[ERROR] Skin table update failed: {e:#}")),
     }
 }
 
@@ -1173,11 +1206,15 @@ impl App {
                     } else {
                         ("Own model", "This skin has its own model.")
                     };
-let (note, tip) = if skin.custom_sounds && skin.swappable {
-                        (format!("{note}, custom sounds"), format!("{tip} Its ability sound effects can be swapped too."))
-                    } else {
-                        (note.to_string(), tip.to_string())
-                    };
+let (mut note, mut tip) = (note.to_string(), tip.to_string());
+                    if skin.custom_sounds && skin.swappable {
+                        note += ", custom sounds";
+                        tip += " Its ability sound effects can be swapped too.";
+                    }
+                    if skin.custom_effects && skin.swappable {
+                        note += ", custom effects";
+                        tip += " Its ability VFX can be swapped too.";
+                    }
 
                     ui.label(RichText::new(note).small().color(MUTED)).on_hover_text(tip);
                     ui.add_space(2.0);
@@ -1199,10 +1236,20 @@ let (note, tip) = if skin.custom_sounds && skin.swappable {
         });
         match action {
             // Skins with extras to bring along ask first; the rest swap straight away.
-            Some(Ok(skin)) if skin.custom_sounds => {
-                self.swap_prompt = Some((c.clone(), skin, swap::SwapOptions { sounds: true }));
+            Some(Ok(skin)) if skin.custom_sounds || skin.custom_effects => {
+                let options = swap::SwapOptions {
+                    sounds: true,
+                    effects: true,
+                };
+                self.swap_prompt = Some((c.clone(), skin, options));
             }
-            Some(Ok(skin)) => self.start_swap(c.clone(), skin, swap::SwapOptions { sounds: true }),
+            Some(Ok(skin)) => {
+                let options = swap::SwapOptions {
+                    sounds: true,
+                    effects: true,
+                };
+                self.start_swap(c.clone(), skin, options)
+            }
             Some(Err(id)) => self.remove_swaps(vec![id]),
             None => {}
         }
@@ -1224,10 +1271,16 @@ let (note, tip) = if skin.custom_sounds && skin.swappable {
                         .color(MUTED),
                     );
                     ui.add_space(8.0);
-                    ui.checkbox(&mut options.sounds, "Sound effects")
-                        .on_hover_text(
+                    if skin.custom_sounds {
+                        ui.checkbox(&mut options.sounds, "Sound effects").on_hover_text(
                             "This skin's own ability sound effects replace the default ones.",
                         );
+                    }
+                    if skin.custom_effects {
+                        ui.checkbox(&mut options.effects, "Visual effects").on_hover_text(
+                            "This skin's own ability VFX replace the default ones. Effects that other skins build on stay default.",
+                        );
+                    }
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         if slant_button(ui, "Swap", Tone::Primary, true, 0.0).clicked() {
