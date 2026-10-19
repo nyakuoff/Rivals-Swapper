@@ -29,6 +29,7 @@ A swap is a regular `~mods` mod that replaces the hero's **default** skin mesh: 
 - **Lobby too.** The lobby (menu) model is replaced the same way, so the swapped skin also shows in the hero gallery and lobby.
 - **Sounds too.** Skins with their own ability sound effects (mostly legendary ones) bring them along: their sound tables replace the default skin's.
 - **Effects too.** Skins with their own ability VFX can bring them along: their gameplay cues replace the default skin's, the default animations play the skin's effects and sounds, and a shared skin-table mod (`RivalsSwapper_SkinTable`) points the default skin at the skin's blueprint for its body effects and effect colors.
+- **MVP cutscenes.** A swapped skin plays the default MVP in its own look; skins that ship their own MVP can instead play that whole MVP (an option when swapping). The hero view's MVP tab plays any of the hero's special MVPs in place of the default one: sequence, stage and final frame (through shared `RivalsSwapper_MVPTable` and `RivalsSwapper_GalleryTable` mods).
 - **One swap per hero.** Swapping another skin for the same hero replaces the previous swap.
 - **Recolors** (no mesh of their own) are swapped as the skin they recolor, with the mesh's material slots pointed at the recolor's materials.
 - **Multi-form heroes** (Hulk, Cloak & Dagger, ...) get every form replaced.

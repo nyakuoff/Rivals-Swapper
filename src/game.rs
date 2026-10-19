@@ -127,10 +127,11 @@ impl Game {
         bail!("{path} not found in any .pak")
     }
 
-    #[cfg(test)]
     /// Whether `target` in the packed mod at `utoc` imports exactly the script
-    /// objects (engine and Python classes) the game's own `package` does. A wrong
-    /// script import hash crashes the game while loading.
+    /// objects (engine and Python classes) the game's own `package` does. Some of
+    /// NetEase's Python classes have hashes that can't be rebuilt from their names;
+    /// a package packed with a wrong one crashes the game while loading.
+    #[cfg(test)]
     pub fn script_imports_survive(&self, package: &str, utoc: &Path, target: &str) -> Result<bool> {
         let script_imports = |store: &dyn IoStoreTrait, package: &str| -> Result<Vec<u64>> {
             use retoc::script_objects::FPackageObjectIndexType;
@@ -413,4 +414,83 @@ impl IoStoreTrait for Store {
             .iter()
             .find_map(|c| c.lookup_package_redirect(id))
     }
+}
+#[cfg(test)]
+#[test]
+#[ignore]
+fn tmp_mvp_assets() {
+    let g = Game::open(Path::new(&crate::settings::Settings::load().game_paks_dir)).unwrap();
+    for q in ["1035302306", "1035001301", "1035302301"] {
+        let hits: Vec<String> = g
+            .packages_under("/Game/")
+            .into_iter()
+            .filter(|p| p.contains(q))
+            .collect();
+        println!("A {q}: {} packages", hits.len());
+        for h in hits
+            .iter()
+            .filter(|h| !h.contains("/Weapons/") && !h.contains("/Particles/"))
+            .take(25)
+        {
+            println!("A   {h}");
+        }
+    }
+}
+/// The gallery table mod hands Venom's default skin row Gummy Surprise's pose
+/// actor: in the packed zen table the two names trade indexes, while the rows
+/// keep referencing the same indexes.
+#[cfg(test)]
+#[test]
+#[ignore]
+fn gallery_table_swaps_show_actors() {
+    let g = Game::open(Path::new(&crate::settings::Settings::load().game_paks_dir)).unwrap();
+    let root = PathBuf::from("target/gz");
+    let _ = std::fs::remove_dir_all(&root);
+    crate::swap::write_gallery_table(
+        &g,
+        &root.join("work"),
+        &root,
+        &[("1035001".into(), "1035302".into())],
+    )
+    .unwrap();
+    let t = "/Game/Marvel/Data/DataTable/HeroGallery/UISkinTable";
+    let id = package_id(t);
+    let ours = iostore::open(
+        root.join("RivalsSwapper_GalleryTable_9999999_P.utoc"),
+        Arc::new(Config::default()),
+    )
+    .unwrap();
+    let mut seen = vec![];
+    for store in [&g.store as &dyn IoStoreTrait, ours.as_ref()] {
+        let d = store.read(bundle_chunk(id)).unwrap();
+        let h = retoc::zen::FZenPackageHeader::deserialize(
+            &mut Cursor::new(&d),
+            store.package_store_entry(id),
+            store.container_file_version().unwrap(),
+            store.container_header_version().unwrap(),
+            None,
+        )
+        .unwrap();
+        let names = h.name_map.copy_raw_names();
+        let payload = &d[h.summary.header_size as usize..];
+        for n in [
+            "/Game/Marvel/Characters/1035/1035001/1035001_LikeBP",
+            "/Game/Marvel/Characters/1035/1035302/1035302_LikeBP",
+        ] {
+            let i = names.iter().position(|x| x == n);
+            let refs = i.map(|i| {
+                (0..payload.len() - 8)
+                    .filter(|&o| {
+                        u32::from_le_bytes(payload[o..o + 4].try_into().unwrap()) == i as u32
+                            && u32::from_le_bytes(payload[o + 4..o + 8].try_into().unwrap()) == 0
+                    })
+                    .collect::<Vec<_>>()
+            });
+            seen.push((i.unwrap(), refs.unwrap()));
+        }
+    }
+    // game: (default idx, refs), (skin idx, refs); ours: swapped indexes, same refs.
+    assert_eq!((seen[2].0, &seen[2].1), (seen[1].0, &seen[1].1));
+    assert_eq!((seen[3].0, &seen[3].1), (seen[0].0, &seen[0].1));
+    let _ = std::fs::remove_dir_all(&root);
 }

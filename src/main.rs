@@ -12,9 +12,9 @@ use std::sync::{Arc, Mutex};
 
 use eframe::egui::{self, Color32, CornerRadius, RichText, Sense, Stroke, Vec2};
 
-use db::{Character, Skin};
+use db::{Character, Mvp, Skin};
 use game::Game;
-use settings::Settings;
+use settings::{Settings, SwapRecord};
 
 const GITHUB_REPO: &str = "nyakuoff/Rivals-Swapper";
 const STEAM_URL: &str = "steam://run/2767030";
@@ -383,6 +383,8 @@ struct App {
     confirm_remove_all: bool,
     /// Skin waiting on the swap options prompt, with the choices so far.
     swap_prompt: Option<(Character, Skin, swap::SwapOptions)>,
+    /// The hero view shows the MVP tab instead of skins.
+    mvp_tab: bool,
 }
 
 impl App {
@@ -417,6 +419,7 @@ impl App {
             paks_input: String::new(),
             confirm_remove_all: false,
             swap_prompt: None,
+            mvp_tab: false,
         }
     }
 
@@ -469,8 +472,123 @@ impl App {
                 }),
                 Err(e) => return h.log(format!("[ERROR] Swap failed: {e:#}")),
             }
-            update_skin_table(h);
+            update_tables(h);
         });
+    }
+
+    /// Make `mvp` the hero's default MVP (one per hero), through the MVP table.
+    fn start_mvp_swap(&mut self, character: Character, mvp: Mvp) {
+        self.log_open = true;
+        let label = mvp_label(&character, &mvp);
+        self.h.with(|s| {
+            s.log.clear();
+            s.log.push(format!(
+                "Swapping {}'s default MVP -> {label} ({})",
+                character.name, mvp.id
+            ));
+            let record = SwapRecord {
+                skin_id: mvp.id.clone(),
+                skin_name: label.clone(),
+                char_id: character.char_id.clone(),
+                ..Default::default()
+            };
+            s.settings
+                .mvp_swaps
+                .insert(character.char_id.clone(), record);
+            let _ = s.settings.save();
+        });
+        self.h.run(move |h| {
+            update_tables(h);
+            h.log(format!(
+                "Done! {}'s default MVP is now {label}.",
+                character.name
+            ));
+        });
+    }
+
+    fn remove_mvp_swap(&mut self, char_id: &str) {
+        self.h.with(|s| {
+            if let Some(rec) = s.settings.mvp_swaps.remove(char_id) {
+                s.log.push(format!("Removed {}", rec.skin_name));
+            }
+            let _ = s.settings.save();
+        });
+        self.h.run(update_tables);
+    }
+
+    fn mvp_view(&mut self, ui: &mut egui::Ui, c: &Character, busy: bool, settings: &Settings) {
+        let current = settings.mvp_swaps.get(&c.char_id);
+        let mut action: Option<Result<Mvp, ()>> = None; // Ok = swap, Err = remove
+        ui.horizontal(|ui| match current {
+            Some(rec) => {
+                ui.label(
+                    RichText::new(format!("Default MVP plays {}.", rec.skin_name)).color(TEXT),
+                );
+                if slant_button(ui, "Remove MVP swap", Tone::Ghost, !busy, 0.0).clicked() {
+                    action = Some(Err(()));
+                }
+            }
+            None => {
+                ui.label(
+                    RichText::new("Default MVP. Pick an MVP to play in its place. A swapped skin brings its own version of the default MVP.").color(MUTED),
+                );
+            }
+        });
+        ui.add_space(10.0);
+        // A skin's version of the default MVP comes with that skin's swap.
+        let mvps: Vec<&Mvp> = c.mvps.iter().filter(|m| m.is_special()).collect();
+        egui::ScrollArea::vertical()
+            .auto_shrink(false)
+            .show(ui, |ui| {
+                rows(ui, &mvps, |ui, mvp, width| {
+                    let active = current.is_some_and(|r| r.skin_id == mvp.id);
+                    card(
+                        ui,
+                        width,
+                        &images::skin(&mvp.id[..7]),
+                        false,
+                        active,
+                        |ui| {
+                            let label = mvp_label(c, mvp);
+                            ui.add(
+                                egui::Label::new(RichText::new(&label).font(font("medium", 15.5)))
+                                    .truncate(),
+                            )
+                            .on_hover_text(&label);
+                            let (note, tip) = if mvp.own_stage {
+                                (
+                                    "Special MVP, own stage",
+                                    "Plays in place of the default MVP, with its own stage.",
+                                )
+                            } else {
+                                ("Special MVP", "Plays in place of the default MVP.")
+                            };
+                            card_note(ui, note, tip);
+                            ui.add_space(2.0);
+                            let w = ui.available_width();
+                            if active {
+                                if slant_button(ui, "Remove", Tone::Danger, !busy, w).clicked() {
+                                    action = Some(Err(()));
+                                }
+                            } else {
+                                let label = if current.is_some() {
+                                    "Swap instead"
+                                } else {
+                                    "Swap"
+                                };
+                                if slant_button(ui, label, Tone::Primary, !busy, w).clicked() {
+                                    action = Some(Ok((*mvp).clone()));
+                                }
+                            }
+                        },
+                    );
+                });
+            });
+        match action {
+            Some(Ok(mvp)) => self.start_mvp_swap(c.clone(), mvp),
+            Some(Err(())) => self.remove_mvp_swap(&c.char_id),
+            None => {}
+        }
     }
 
     fn remove_swaps(&mut self, skin_ids: Vec<String>) {
@@ -480,7 +598,7 @@ impl App {
             }
             let _ = s.settings.save();
         });
-        self.h.run(update_skin_table);
+        self.h.run(update_tables);
     }
 
     fn launch(&mut self) {
@@ -493,42 +611,128 @@ impl App {
 }
 
 /// Rewrite the shared skin-table mod from the active swaps (see
-/// `swap::write_skin_table`), or remove it when no swap needs it.
-fn update_skin_table(h: &Handle) {
-    let (paks, pairs): (PathBuf, Vec<(String, String)>) = h.with(|s| {
-        let pairs = s
+/// Rewrite the shared table mods from the active swaps (or remove them when
+/// nothing needs them): the skin table (skin blueprints, see
+/// `swap::write_skin_table`) and the MVP table (each hero's MVP tab choice, or
+/// the swapped skin's version of the default MVP, see `swap::write_mvp_table`).
+fn update_tables(h: &Handle) {
+    let (paks, blueprints, mvps, gallery) = h.with(|s| {
+        let blueprints: Vec<(String, String)> = s
             .settings
             .active_swaps
             .values()
             .filter(|r| r.childbp)
             .map(|r| (r.target_skin_id.clone(), r.skin_id.clone()))
             .collect();
-        (PathBuf::from(&s.settings.game_paks_dir), pairs)
+        let mut mvps = vec![];
+        // Skins whose MVP plays on the default skin: their show actors come along.
+        let mut gallery = vec![];
+        for c in &s.characters {
+            let sequence = |id: &str| {
+                c.mvps
+                    .iter()
+                    .find(|m| m.id == id)
+                    .map(|m| m.package.clone())
+            };
+            let default_id = format!("{}301", c.default_skin_id);
+            let Some(default_sequence) = sequence(&default_id) else {
+                continue;
+            };
+            let swapped = s.settings.swaps_for(&c.char_id).next();
+            // The MVP tab's choice, else the swapped skin's own MVP if ticked.
+            let chosen = s
+                .settings
+                .mvp_swaps
+                .get(&c.char_id)
+                .map(|r| r.skin_id.clone())
+                .or_else(|| {
+                    swapped
+                        .filter(|r| r.mvp)
+                        .and_then(|r| c.own_mvp(&r.skin_id))
+                        .map(|m| m.id.clone())
+                });
+            if let Some(mvp_id) = chosen {
+                // The swapped skin's take on the MVP if it has one, else the MVP's own skin's.
+                let skins = swapped
+                    .map(|r| r.skin_id.clone())
+                    .into_iter()
+                    .chain([mvp_id[..7].to_string()])
+                    .collect();
+                // Show actors (lobby, gallery, the MVP's own shots) stay the swapped
+                // skin's; all of a hero's show actors share the default's parts, so the
+                // MVP plays with them. No skin swap: the MVP's own skin.
+                let shown = swapped.map_or_else(|| mvp_id[..7].to_string(), |r| r.skin_id.clone());
+                gallery.push((c.default_skin_id.clone(), shown));
+                mvps.push(swap::MvpChoice::Special {
+                    default_id,
+                    mvp_id,
+                    default_skin: c.default_skin_id.clone(),
+                    skins,
+                });
+            } else if let Some((r, skin_sequence)) =
+                swapped.and_then(|r| sequence(&format!("{}301", r.skin_id)).map(|q| (r, q)))
+            {
+                gallery.push((c.default_skin_id.clone(), r.skin_id.clone()));
+                mvps.push(swap::MvpChoice::SkinVersion {
+                    default_sequence,
+                    skin_sequence,
+                });
+            }
+        }
+        (
+            PathBuf::from(&s.settings.game_paks_dir),
+            blueprints,
+            mvps,
+            gallery,
+        )
     });
     let mods = paks.join("~mods");
-    if pairs.is_empty()
-        && !swap::mod_files(&mods, swap::SKIN_TABLE_MOD)
-            .iter()
-            .any(|f| f.exists())
+    let exists = |m: &str| swap::mod_files(&mods, m).iter().any(|f| f.exists());
+    if blueprints.is_empty()
+        && mvps.is_empty()
+        && !exists(swap::SKIN_TABLE_MOD)
+        && !exists(swap::MVP_TABLE_MOD)
+        && !exists(swap::GALLERY_TABLE_MOD)
     {
         return;
     }
-    h.log("  Updating the skin table (body effects and effect colors)...".into());
-    let res = Game::open(&paks)
-        .and_then(|game| swap::write_skin_table(&game, &cache_dir().join("table"), &mods, &pairs));
+    h.log("  Updating the skin and MVP tables...".into());
+    let res = Game::open(&paks).and_then(|game| {
+        let work = cache_dir().join("table");
+        Ok((
+            swap::write_skin_table(&game, &work, &mods, &blueprints)?,
+            swap::write_mvp_table(&game, &work, &mods, &mvps)?,
+            swap::write_gallery_table(&game, &work, &mods, &gallery)?,
+        ))
+    });
     release_memory();
     match res {
-        Ok(n) => h.log(format!("  Skin table: {n} skin blueprint(s) in use")),
-        Err(e) => h.log(format!("[ERROR] Skin table update failed: {e:#}")),
+        Ok((b, m, _)) => h.log(format!(
+            "  Tables: {b} skin blueprint(s), {m} MVP swap(s) in use"
+        )),
+        Err(e) => h.log(format!("[ERROR] Table update failed: {e:#}")),
     }
 }
 
 /// Forget a swap and delete its mod files from ~mods.
 fn delete_swap(settings: &mut Settings, skin_id: &str, log: &mut Vec<String>) {
-    let Some(rec) = settings.active_swaps.remove(skin_id) else {
-        return;
-    };
-    let mods_dir = Path::new(&settings.game_paks_dir).join("~mods");
+    if let Some(rec) = settings.active_swaps.remove(skin_id) {
+        delete_record(&settings.game_paks_dir, &rec, log);
+    }
+}
+
+/// Display name of an MVP: the skin it belongs to and which MVP it is.
+fn mvp_label(c: &Character, mvp: &Mvp) -> String {
+    let skin = c
+        .skins
+        .iter()
+        .find(|s| s.id == mvp.id[..7])
+        .map_or_else(|| format!("Skin {}", &mvp.id[..7]), |s| s.name.clone());
+    format!("{skin} MVP")
+}
+
+fn delete_record(paks_dir: &str, rec: &SwapRecord, log: &mut Vec<String>) {
+    let mods_dir = Path::new(paks_dir).join("~mods");
     let recorded = [&rec.pak_path, &rec.utoc_path, &rec.ucas_path].map(PathBuf::from);
     for f in recorded
         .into_iter()
@@ -860,6 +1064,29 @@ fn card(
     resp
 }
 
+/// A card's note, in a fixed three-line area so every card in a row is the same
+/// height and the buttons line up. Longer notes are clipped; the full note
+/// shows on hover.
+fn card_note(ui: &mut egui::Ui, note: &str, tip: &str) {
+    const LINES: usize = 3;
+    let width = ui.available_width();
+    let galley = egui::WidgetText::from(RichText::new(note).small().color(MUTED)).into_galley(
+        ui,
+        Some(egui::TextWrapMode::Wrap),
+        width,
+        egui::TextStyle::Small,
+    );
+    let line = galley.rows.first().map_or(galley.size().y, |r| r.height());
+    let (rect, resp) =
+        ui.allocate_exact_size(Vec2::new(width, line * LINES as f32), Sense::hover());
+    ui.painter()
+        .with_clip_rect(rect.intersect(ui.clip_rect()))
+        .galley(rect.left_top(), galley, MUTED);
+    if !tip.is_empty() {
+        resp.on_hover_text(tip);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Frame
 // ---------------------------------------------------------------------------
@@ -1120,7 +1347,7 @@ impl App {
         ui.add_space(2.0);
         ui.horizontal(|ui| {
             ui.selectable_value(&mut self.swapped_only, false, "All heroes");
-            let n = settings.active_swaps.len();
+            let n = settings.swap_count();
             ui.selectable_value(&mut self.swapped_only, true, format!("Swapped ({n})"));
         });
         ui.add_space(6.0);
@@ -1129,7 +1356,7 @@ impl App {
             .iter()
             .filter(|c| {
                 c.name.to_lowercase().contains(&query)
-                    && (!self.swapped_only || settings.swaps_for(&c.char_id).next().is_some())
+                    && (!self.swapped_only || settings.is_swapped(&c.char_id))
             })
             .collect();
         egui::ScrollArea::vertical()
@@ -1147,7 +1374,7 @@ impl App {
                 }
                 for c in shown {
                     let selected = self.selected.as_deref() == Some(c.char_id.as_str());
-                    let swapped = settings.swaps_for(&c.char_id).next().is_some();
+                    let swapped = settings.is_swapped(&c.char_id);
                     if roster_row(ui, c, selected, swapped).clicked() {
                         self.selected = Some(c.char_id.clone());
                     }
@@ -1191,7 +1418,18 @@ impl App {
             ui.add_space(8.0);
             texture_warning(ui, &c.name);
         }
-        ui.add_space(14.0);
+        ui.add_space(10.0);
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut self.mvp_tab, false, "Skins");
+            let n = c.mvps.iter().filter(|m| m.is_special()).count();
+            ui.add_enabled_ui(n > 0, |ui| {
+                ui.selectable_value(&mut self.mvp_tab, true, format!("MVP ({n})"));
+            });
+        });
+        ui.add_space(8.0);
+        if self.mvp_tab && c.mvps.iter().any(Mvp::is_special) {
+            return self.mvp_view(ui, c, busy, &settings);
+        }
 
         let skins: Vec<&Skin> = c.alt_skins().collect();
         egui::ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
@@ -1219,8 +1457,12 @@ let (mut note, mut tip) = (note.to_string(), tip.to_string());
                         note += ", some VFX stay default";
                         tip += " Some of its effects can't be swapped: the game picks them from the skin itself, so they stay default.";
                     }
+                    if c.own_mvp(&skin.id).is_some() && skin.swappable {
+                        note += ", own MVP";
+                        tip += " Its own MVP can replace the default one.";
+                    }
 
-                    ui.label(RichText::new(note).small().color(MUTED)).on_hover_text(tip);
+                    card_note(ui, &note, &tip);
                     ui.add_space(2.0);
                     let w = ui.available_width();
                     if active {
@@ -1240,10 +1482,13 @@ let (mut note, mut tip) = (note.to_string(), tip.to_string());
         });
         match action {
             // Skins with extras to bring along ask first; the rest swap straight away.
-            Some(Ok(skin)) if skin.custom_sounds || skin.custom_effects => {
+            Some(Ok(skin))
+                if skin.custom_sounds || skin.custom_effects || c.own_mvp(&skin.id).is_some() =>
+            {
                 let options = swap::SwapOptions {
                     sounds: true,
                     effects: true,
+                    mvp: true,
                 };
                 self.swap_prompt = Some((c.clone(), skin, options));
             }
@@ -1251,6 +1496,7 @@ let (mut note, mut tip) = (note.to_string(), tip.to_string());
                 let options = swap::SwapOptions {
                     sounds: true,
                     effects: true,
+                    mvp: true,
                 };
                 self.start_swap(c.clone(), skin, options)
             }
@@ -1285,6 +1531,11 @@ let (mut note, mut tip) = (note.to_string(), tip.to_string());
                             "This skin's own ability VFX, body effects and effect colors replace the default ones.",
                         );
                     }
+                    if character.own_mvp(&skin.id).is_some() {
+                        ui.checkbox(&mut options.mvp, "Its own MVP").on_hover_text(
+                            "The default MVP plays this skin's own MVP, whole scene and stage included. Unticked, the default MVP plays with this skin.",
+                        );
+                    }
                     if skin.missing_effects {
                         ui.label(
                             RichText::new("Some of this skin's effects can't be swapped and will stay default.")
@@ -1317,7 +1568,7 @@ let (mut note, mut tip) = (note.to_string(), tip.to_string());
         }
 
         if self.confirm_remove_all {
-            let count = self.h.with(|s| s.settings.active_swaps.len());
+            let count = self.h.with(|s| s.settings.swap_count());
             egui::Modal::new(egui::Id::unique("remove_all")).frame(dialog_frame()).show(ctx, |ui| {
                 ui.set_width(380.0);
                 ui.label(RichText::new("Remove every swap?").heading());
@@ -1325,7 +1576,11 @@ let (mut note, mut tip) = (note.to_string(), tip.to_string());
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     if slant_button(ui, "Remove all", Tone::Danger, true, 0.0).clicked() {
-                        let ids = self.h.with(|s| s.settings.active_swaps.keys().cloned().collect());
+                        // MVP choices go first; removing the skin swaps rewrites the tables.
+                        let ids = self.h.with(|s| {
+                            s.settings.mvp_swaps.clear();
+                            s.settings.active_swaps.keys().cloned().collect()
+                        });
                         self.log_open = true;
                         self.remove_swaps(ids);
                         self.confirm_remove_all = false;
@@ -1363,7 +1618,7 @@ let (mut note, mut tip) = (note.to_string(), tip.to_string());
                     }
                 });
                 ui.add_space(8.0);
-                let has_swaps = self.h.with(|s| !s.settings.active_swaps.is_empty());
+                let has_swaps = self.h.with(|s| s.settings.swap_count() > 0);
                 ui.horizontal(|ui| {
                     ui.label(RichText::new("Swaps").font(font("medium", 15.0)));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -1509,6 +1764,58 @@ fn roster_row(ui: &mut egui::Ui, c: &Character, selected: bool, swapped: bool) -
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Cards with short and long notes put their buttons at the same height.
+    #[test]
+    fn card_buttons_line_up() {
+        let ctx = egui::Context::default();
+        fonts(&ctx);
+        style(&ctx);
+        let mut tops = vec![];
+        let mut lines = 0;
+        for _ in 0..2 {
+            tops.clear();
+            let _ = ctx.run_ui(
+                egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        Vec2::new(900.0, 900.0),
+                    )),
+                    ..Default::default()
+                },
+                |ui| {
+                    let notes = [
+                        "Own model",
+                        "Own model, custom sounds, custom effects, some VFX stay default",
+                    ];
+                    // The long note fits its three lines at the narrowest card.
+                    lines = egui::WidgetText::from(RichText::new(notes[1]).small())
+                        .into_galley(
+                            ui,
+                            Some(egui::TextWrapMode::Wrap),
+                            CARD_W - 20.0,
+                            egui::TextStyle::Small,
+                        )
+                        .rows
+                        .len();
+                    rows(ui, &notes, |ui, note, width| {
+                        card(ui, width, Path::new("missing.png"), false, false, |ui| {
+                            ui.label("Skin");
+                            card_note(ui, note, "");
+                            tops.push(
+                                slant_button(ui, "Swap", Tone::Primary, true, ui.available_width())
+                                    .rect
+                                    .top(),
+                            );
+                        });
+                    });
+                },
+            );
+        }
+        assert!(lines <= 3, "{lines} lines");
+        assert_eq!(tops.len(), 2);
+        assert_eq!(tops[0], tops[1], "{tops:?}");
+    }
 
     /// A button inside a card must receive its own clicks.
     #[test]

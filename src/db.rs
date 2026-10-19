@@ -17,7 +17,7 @@ static VARIANT_CUE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(.*)_\d{3}_
 
 const LOCRES_PATH: &str = "Marvel/Content/Localization/Game/en/Game.locres";
 /// Bump when the build rules change so old caches get rebuilt.
-const DB_VERSION: u32 = 12;
+const DB_VERSION: u32 = 13;
 
 /// Fixes for names the localization stores oddly: (char_id, display name).
 const CHAR_NAME_OVERRIDES: &[(&str, &str)] = &[];
@@ -44,6 +44,24 @@ pub struct Skin {
     pub missing_effects: bool,
 }
 
+/// An MVP cutscene: a level sequence named in the game's MVP table.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Mvp {
+    /// MVP item id: skin id + 3 digits (301 is the hero's default MVP).
+    pub id: String,
+    /// The level sequence package.
+    pub package: String,
+    /// Plays on a stage map of its own (most bought MVPs).
+    pub own_stage: bool,
+}
+
+impl Mvp {
+    /// An MVP of its own, not a skin's version of the hero's default MVP (301).
+    pub fn is_special(&self) -> bool {
+        !self.id.ends_with("301")
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Character {
     pub name: String,
@@ -55,9 +73,19 @@ pub struct Character {
     /// swapped mesh that part can come out with the default skin's texture.
     #[serde(default)]
     pub texture_risk: bool,
+    /// Every MVP of the hero, the default one included.
+    #[serde(default)]
+    pub mvps: Vec<Mvp>,
 }
 
 impl Character {
+    /// The skin's own (special) MVP, if it ships one.
+    pub fn own_mvp(&self, skin: &str) -> Option<&Mvp> {
+        self.mvps
+            .iter()
+            .find(|m| m.is_special() && m.id.starts_with(skin))
+    }
+
     /// Skins that can be picked as a swap source (no default look).
     pub fn alt_skins(&self) -> impl Iterator<Item = &Skin> {
         self.skins
@@ -124,6 +152,14 @@ pub fn build_and_cache(
             s.missing_effects = variant_cues_add_effects(game, &work, &s.id, &c.default_skin_id);
         }
     });
+    let mvps = mvps(game, &work)?;
+    for c in &mut characters {
+        c.mvps = mvps
+            .iter()
+            .filter(|m| c.skins.iter().any(|s| s.id[..4] == m.id[..4]))
+            .cloned()
+            .collect();
+    }
     let _ = std::fs::remove_dir_all(&work);
     let cache = Cache {
         version: DB_VERSION,
@@ -160,6 +196,32 @@ fn variant_cues_add_effects(game: &Game, work: &Path, skin: &str, default: &str)
         v.iter()
             .any(|n| n.contains("/Particles/") && !b.contains(n))
     })
+}
+
+/// Every MVP in the game's MVP table, by id.
+pub fn mvps(game: &Game, work: &Path) -> Result<Vec<Mvp>> {
+    static LS: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"^/Game/Marvel/Characters/\d{4}/\d{7}/.*/LS_(\d{10})[^/]*$").unwrap()
+    });
+    let table = game.extract_package(
+        "/Game/Marvel/Data/DataTable/UI/HeroSkin/UIHeroMVPTable",
+        work,
+    )?;
+    let names = crate::swap::names(&table)?;
+    let mut out: Vec<Mvp> = vec![];
+    for n in &names {
+        let Some(m) = LS.captures(n) else { continue };
+        if out.iter().any(|x| x.id == m[1]) {
+            continue;
+        }
+        out.push(Mvp {
+            id: m[1].to_string(),
+            package: n.clone(),
+            own_stage: names.contains(&format!("/Game/Marvel/Maps/MVP/{}/MVP", &m[1])),
+        });
+    }
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(out)
 }
 
 /// Whether the skin's sound table plays any event from its own Wwise folder.
@@ -483,6 +545,7 @@ pub fn build(flat: &HashMap<String, String>, index: &SkinIndex) -> Vec<Character
             default_skin_id,
             skins: vec![],
             texture_risk: false,
+            mvps: vec![],
         });
         for s in skins {
             if !c.skins.iter().any(|x| x.id == s.id) {

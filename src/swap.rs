@@ -30,6 +30,16 @@ pub struct SwapOptions {
     pub sounds: bool,
     /// The skin's own ability VFX (gameplay cues, when it has them).
     pub effects: bool,
+    /// The default MVP plays the skin's own MVP, whole scene (when it ships one),
+    /// through the shared MVP table.
+    pub mvp: bool,
+}
+
+fn safe_mod_name(name: &str) -> String {
+    name.replace(' ', "_")
+        .chars()
+        .filter(|c| !r#"<>:"/\|?*"#.contains(*c))
+        .collect()
 }
 
 pub fn create(
@@ -43,11 +53,7 @@ pub fn create(
 ) -> Result<SwapRecord> {
     let (char_id, source_id, target_id) =
         (&character.char_id, &skin.id, &character.default_skin_id);
-    let mod_name: String = format!("{}_{}", character.name, skin.name)
-        .replace(' ', "_")
-        .chars()
-        .filter(|c| !r#"<>:"/\|?*"#.contains(*c))
-        .collect();
+    let mod_name = safe_mod_name(&format!("{}_{}", character.name, skin.name));
 
     let _ = std::fs::remove_dir_all(work_dir);
     let result = (|| {
@@ -253,6 +259,7 @@ pub fn create(
             target_skin_id: target_id.clone(),
             meshes: packed,
             childbp,
+            mvp: options.mvp,
         })
     })();
     let _ = std::fs::remove_dir_all(work_dir);
@@ -397,40 +404,223 @@ pub fn write_skin_table(
     mods_dir: &Path,
     pairs: &[(String, String)],
 ) -> Result<usize> {
-    for f in mod_files(mods_dir, SKIN_TABLE_MOD) {
+    let bp = |s: &str| {
+        [
+            format!("/Game/Marvel/Characters/{}/{s}/{s}_ChildBP", &s[..4]),
+            format!("{s}_ChildBP_C"),
+        ]
+    };
+    let groups = pairs
+        .iter()
+        .map(|(default, skin)| bp(default).into_iter().zip(bp(skin)).collect())
+        .collect();
+    write_table_mod(
+        game,
+        work_dir,
+        mods_dir,
+        SKIN_TABLE_MOD,
+        SKIN_TABLE,
+        groups,
+        &|_, _| {},
+    )
+}
+
+/// The shared MVP-table mod, like the skin table's.
+pub const MVP_TABLE_MOD: &str = "RivalsSwapper_MVPTable";
+const MVP_TABLE: &str = "/Game/Marvel/Data/DataTable/UI/HeroSkin/UIHeroMVPTable";
+
+/// What a hero's default MVP plays, in the shared MVP-table mod.
+pub enum MvpChoice {
+    /// The default MVP's row and this MVP's trade keys: the default MVP id plays
+    /// the whole MVP (sequence, stage, final frame). A special MVP's row only has
+    /// sequences for the skins it was made for, so the first of `skins` that it
+    /// has is relabeled as `default_skin` (else the default skin gets nothing
+    /// and the MVP plays black).
+    Special {
+        default_id: String,
+        mvp_id: String,
+        default_skin: String,
+        skins: Vec<String>,
+    },
+    /// In the default MVP's row, the default skin's sequence and this skin's
+    /// trade places: the default skin plays the skin's version of the MVP.
+    SkinVersion {
+        default_sequence: String,
+        skin_sequence: String,
+    },
+}
+
+/// Rewrite the MVP-table mod for these choices, or remove it when there are none.
+pub fn write_mvp_table(
+    game: &Game,
+    work_dir: &Path,
+    mods_dir: &Path,
+    choices: &[MvpChoice],
+) -> Result<usize> {
+    let object = |p: &str| p.rsplit('/').next().unwrap_or_default().to_string();
+    let groups = choices
+        .iter()
+        .map(|c| match c {
+            MvpChoice::Special {
+                default_id, mvp_id, ..
+            } => vec![(default_id.clone(), mvp_id.clone())],
+            MvpChoice::SkinVersion {
+                default_sequence: d,
+                skin_sequence: s,
+            } => {
+                vec![(d.clone(), s.clone()), (object(d), object(s))]
+            }
+        })
+        .collect();
+    let relabel = |names: &[String], data: &mut [u8]| {
+        for c in choices {
+            let MvpChoice::Special {
+                mvp_id,
+                default_skin,
+                skins,
+                ..
+            } = c
+            else {
+                continue;
+            };
+            let Some(row) = mvp_row(names, data, mvp_id) else {
+                continue;
+            };
+            // Same length (skin ids are 7 digits), so the patch is in place.
+            let Some((at, len)) = skins.iter().find_map(|s| {
+                let pat = fstring(s);
+                data[row.clone()]
+                    .windows(pat.len())
+                    .position(|w| w == pat.as_slice())
+                    .map(|i| (row.start + i, pat.len()))
+            }) else {
+                continue;
+            };
+            let new = fstring(default_skin);
+            if new.len() == len {
+                data[at..at + len].copy_from_slice(&new);
+            }
+        }
+    };
+    write_table_mod(
+        game,
+        work_dir,
+        mods_dir,
+        MVP_TABLE_MOD,
+        MVP_TABLE,
+        groups,
+        &relabel,
+    )
+}
+
+/// The byte range of the MVP table row keyed `id` in its export data: from the
+/// key's name reference to the next row key's (keys are 10-digit MVP ids).
+fn mvp_row(names: &[String], data: &[u8], id: &str) -> Option<std::ops::Range<usize>> {
+    let u32_at = |o: usize| u32::from_le_bytes(data[o..o + 4].try_into().unwrap()) as usize;
+    let is_key = |o: usize| {
+        let v = u32_at(o);
+        v < names.len()
+            && u32_at(o + 4) == 0
+            && names[v].len() == 10
+            && names[v].bytes().all(|c| c.is_ascii_digit())
+    };
+    let index = names.iter().position(|n| n == id)?;
+    let start =
+        (0..data.len().checked_sub(8)?).find(|&o| u32_at(o) == index && u32_at(o + 4) == 0)?;
+    let end = (start + 8..data.len() - 8)
+        .find(|&o| is_key(o))
+        .unwrap_or(data.len());
+    Some(start..end)
+}
+
+/// The shared hero-gallery table mod, like the skin table's.
+pub const GALLERY_TABLE_MOD: &str = "RivalsSwapper_GalleryTable";
+const GALLERY_TABLE: &str = "/Game/Marvel/Data/DataTable/HeroGallery/UISkinTable";
+
+/// Rewrite the hero-gallery table mod for these (default skin, skin) pairs: the
+/// default skin's row takes the skin's show and pose actors (`ShowBP`,
+/// `LikeBP`). A skin's MVP sequences bind its own show actor, so an MVP of that
+/// skin played on the default skin needs them (else its final shot is empty).
+pub fn write_gallery_table(
+    game: &Game,
+    work_dir: &Path,
+    mods_dir: &Path,
+    pairs: &[(String, String)],
+) -> Result<usize> {
+    let actors = |s: &str| {
+        let dir = format!("/Game/Marvel/Characters/{}/{s}", &s[..4]);
+        ["ShowBP", "LikeBP"]
+            .map(|a| [format!("{dir}/{s}_{a}"), format!("{s}_{a}_C")])
+            .concat()
+    };
+    let groups = pairs
+        .iter()
+        .map(|(default, skin)| actors(default).into_iter().zip(actors(skin)).collect())
+        .collect();
+    write_table_mod(
+        game,
+        work_dir,
+        mods_dir,
+        GALLERY_TABLE_MOD,
+        GALLERY_TABLE,
+        groups,
+        &|_, _| {},
+    )
+}
+
+/// Rewrite a shared table mod: the game's `table` with each group's name pairs
+/// swapped in its name map, so every reference to one name resolves to the other
+/// (rows trade keys or fields). A group applies only if all its names are in the
+/// table. `patch` then edits the export data in place (given the table's
+/// original names). No group applies: the mod is removed. Returns how many
+/// groups applied.
+fn write_table_mod(
+    game: &Game,
+    work_dir: &Path,
+    mods_dir: &Path,
+    mod_name: &str,
+    table: &str,
+    groups: Vec<Vec<(String, String)>>,
+    patch: &dyn Fn(&[String], &mut [u8]),
+) -> Result<usize> {
+    for f in mod_files(mods_dir, mod_name) {
         let _ = std::fs::remove_file(f);
     }
-    if pairs.is_empty() {
+    if groups.is_empty() {
         return Ok(0);
     }
     let _ = std::fs::remove_dir_all(work_dir);
     let result = (|| {
         let content_dir = work_dir.join("staging/Marvel/Content");
-        let table = game.extract_package(SKIN_TABLE, &work_dir.join("extract"))?;
-        let dst = stage(&table, &content_dir, SKIN_TABLE)?;
-        let names: HashSet<String> = names(&dst)?.into_iter().collect();
+        let extracted = game.extract_package(table, &work_dir.join("extract"))?;
+        let dst = stage(&extracted, &content_dir, table)?;
+        let original = names(&dst)?;
+        let names: HashSet<String> = original.iter().cloned().collect();
         let mut renames = HashMap::new();
-        for (default, skin) in pairs {
-            let bp = |s: &str| {
-                (
-                    format!("/Game/Marvel/Characters/{}/{s}/{s}_ChildBP", &s[..4]),
-                    format!("{s}_ChildBP_C"),
-                )
-            };
-            let ((dp, dc), (sp, sc)) = (bp(default), bp(skin));
-            if [&dp, &dc, &sp, &sc].iter().all(|n| names.contains(*n)) {
-                for (a, b) in [(dp, sp), (dc, sc)] {
-                    renames.insert(b.clone(), a.clone());
-                    renames.insert(a, b);
-                }
+        let mut applied = 0;
+        for group in groups {
+            if !group
+                .iter()
+                .all(|(a, b)| names.contains(a) && names.contains(b))
+            {
+                continue;
+            }
+            applied += 1;
+            for (a, b) in group {
+                renames.insert(b.clone(), a.clone());
+                renames.insert(a, b);
             }
         }
-        if renames.is_empty() {
+        if applied == 0 {
             return Ok(0);
         }
-        relocate_package(&dst, SKIN_TABLE, &renames)?;
-        pack(mods_dir, SKIN_TABLE_MOD, &content_dir)?;
-        Ok(renames.len() / 4)
+        relocate_package(&dst, table, &renames)?;
+        let uexp = dst.with_extension("uexp");
+        let mut data = std::fs::read(&uexp)?;
+        patch(&original, &mut data);
+        std::fs::write(&uexp, data)?;
+        pack(mods_dir, mod_name, &content_dir)?;
+        Ok(applied)
     })();
     let _ = std::fs::remove_dir_all(work_dir);
     result
@@ -1258,6 +1448,102 @@ mod tests {
         assert!(mod_files(&root, SKIN_TABLE_MOD).iter().all(|f| !f.exists()));
     }
 
+    /// MVP swaps in the shared MVP table: Venom's default MVP id takes Gummy
+    /// Surprise's special MVP row, and (separately) the default row plays Gummy
+    /// Surprise's version of the default MVP.
+    #[test]
+    #[ignore]
+    #[cfg(unix)]
+    fn mvp_table_swaps() {
+        let paks = PathBuf::from(crate::settings::Settings::load().game_paks_dir);
+        let game = Game::open(&paks).unwrap();
+        let root = std::env::temp_dir().join("rivals_swapper_mvp");
+        let _ = std::fs::remove_dir_all(&root);
+        let mvps = crate::db::mvps(&game, &root.join("list")).unwrap();
+        let sequence = |id: &str| mvps.iter().find(|m| m.id == id).unwrap().package.clone();
+        let index = |g: &Game, dir: &str, n: &str| {
+            names(&g.extract_package(MVP_TABLE, &root.join(dir)).unwrap())
+                .unwrap()
+                .iter()
+                .position(|x| x == n)
+                .unwrap()
+        };
+        let cases = [
+            (
+                MvpChoice::Special {
+                    default_id: "1035001301".into(),
+                    mvp_id: "1035302306".into(),
+                    default_skin: "1035001".into(),
+                    skins: vec!["1035304".into(), "1035302".into()],
+                },
+                "1035001301".to_string(),
+                "1035302306".to_string(),
+            ),
+            (
+                MvpChoice::SkinVersion {
+                    default_sequence: sequence("1035001301"),
+                    skin_sequence: sequence("1035302301"),
+                },
+                sequence("1035001301"),
+                sequence("1035302301"),
+            ),
+        ];
+        for (i, (choice, a, b)) in cases.into_iter().enumerate() {
+            let out = root.join(i.to_string());
+            assert_eq!(
+                write_mvp_table(&game, &out.join("work"), &out, &[choice]).unwrap(),
+                1
+            );
+            let utoc = &mod_files(&out, MVP_TABLE_MOD)[1];
+            assert!(
+                game.script_imports_survive(MVP_TABLE, utoc, MVP_TABLE)
+                    .unwrap()
+            );
+            let view = out.join("view");
+            std::fs::create_dir_all(&view).unwrap();
+            for f in std::fs::read_dir(&paks)
+                .unwrap()
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| p.is_file())
+                .chain(mod_files(&out, MVP_TABLE_MOD))
+            {
+                std::os::unix::fs::symlink(&f, view.join(f.file_name().unwrap())).unwrap();
+            }
+            let packed = Game::open(&view).unwrap();
+            assert_eq!(
+                index(&game, "o1", &a),
+                index(&packed, &format!("p{i}a"), &b)
+            );
+            assert_eq!(
+                index(&game, "o2", &b),
+                index(&packed, &format!("p{i}b"), &a)
+            );
+            if i == 0 {
+                // The row the default MVP id now names is the special one, with an
+                // entry for the default skin.
+                let table = packed
+                    .extract_package(MVP_TABLE, &root.join("row"))
+                    .unwrap();
+                let (names, data) = (
+                    names(&table).unwrap(),
+                    std::fs::read(table.with_extension("uexp")).unwrap(),
+                );
+                let row = &data[mvp_row(&names, &data, "1035001301").unwrap()];
+                let has = |id: &str| {
+                    row.windows(fstring(id).len())
+                        .any(|w| w == fstring(id).as_slice())
+                };
+                assert!(
+                    row.len() < 1000,
+                    "the default row is far longer: {}",
+                    row.len()
+                );
+                assert!(has("1035001") && !has("1035302"));
+            }
+        }
+    }
+
     /// Unticking sound effects keeps the default skin's sounds.
     #[test]
     #[ignore]
@@ -1278,6 +1564,7 @@ mod tests {
                 SwapOptions {
                     sounds,
                     effects: false,
+                    mvp: false,
                 },
                 &|m| lines.borrow_mut().push(m),
             )
@@ -1313,6 +1600,7 @@ mod tests {
                 SwapOptions {
                     sounds: true,
                     effects: true,
+                    mvp: true,
                 },
                 &|m| println!("{m}"),
             )
