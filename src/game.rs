@@ -122,6 +122,39 @@ impl Game {
         bail!("{path} not found in any .pak")
     }
 
+    #[cfg(test)]
+    /// Whether `target` in the packed mod at `utoc` imports exactly the script
+    /// objects (engine and Python classes) the game's own `package` does. A wrong
+    /// script import hash crashes the game while loading.
+    pub fn script_imports_survive(&self, package: &str, utoc: &Path, target: &str) -> Result<bool> {
+        let script_imports = |store: &dyn IoStoreTrait, package: &str| -> Result<Vec<u64>> {
+            use retoc::script_objects::FPackageObjectIndexType;
+            let id = package_id(package);
+            let data = store.read(bundle_chunk(id))?;
+            let header = retoc::zen::FZenPackageHeader::deserialize(
+                &mut Cursor::new(&data),
+                store.package_store_entry(id),
+                store
+                    .container_file_version()
+                    .context("no container version")?,
+                store
+                    .container_header_version()
+                    .context("no container header version")?,
+                None,
+            )?;
+            let mut hashes: Vec<u64> = header
+                .import_map
+                .iter()
+                .filter(|i| i.kind() == FPackageObjectIndexType::ScriptImport)
+                .map(|i| i.to_raw())
+                .collect();
+            hashes.sort_unstable();
+            Ok(hashes)
+        };
+        let packed = iostore::open(utoc, Arc::new(Config::default()))?;
+        Ok(script_imports(&self.store, package)? == script_imports(packed.as_ref(), target)?)
+    }
+
     pub fn skins(&self) -> &SkinIndex {
         self.skins.get_or_init(|| {
             let mesh_re = regex::Regex::new(r"Marvel/Content/(Marvel/Characters/(\d{4})/(\d{7})/Mesh(?:es)?/(?:(\d{4,5})/)?SK_\d{4,5}_(\d{7})(_Lobby)?)\.uasset$").unwrap();

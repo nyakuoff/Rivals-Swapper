@@ -181,6 +181,12 @@ pub fn create(
         }
 
         log("Packing IoStore mod into ~mods (UAssetTool)...".into());
+        for f in crate::walk(&content_dir)
+            .iter()
+            .filter(|f| f.extension().is_some_and(|e| e == "uasset"))
+        {
+            spell_out_script_import_numbers(f)?;
+        }
         std::fs::create_dir_all(mods_dir)?;
         let files = mod_files(mods_dir, &mod_name);
         let out_base = mods_dir.join(format!("{mod_name}_9999999_P"));
@@ -691,6 +697,115 @@ pub fn relocate_package(
     Ok(old_path)
 }
 
+/// Give script imports with a numbered name (NetEase's Python classes, like
+/// `PyAbility_103521.PyCue_HitImpact_10352101`, stored as `PyCue_HitImpact` +
+/// number) an explicit name of their own. UAssetTool drops FName numbers when it
+/// hashes script imports, which points them at classes that don't exist and
+/// crashes the game while loading; with the number spelled out the hash is right.
+/// Returns how many names were spelled out.
+pub fn spell_out_script_import_numbers(uasset: &Path) -> Result<usize> {
+    let raw = std::fs::read(uasset)?;
+    let pos = summary_positions(&raw)?;
+    let read = |f: &str| i32_at(&raw, pos[f]);
+    let entries = name_entries(&raw, &pos)?;
+    let names: Vec<&str> = entries.iter().map(|e| e.0.as_str()).collect();
+    let (import_offset, import_count) = (
+        read("ImportOffset")? as usize,
+        read("ImportCount")? as usize,
+    );
+    // Import entries are 32 bytes: ClassPackage, ClassName (FNames), OuterIndex,
+    // ObjectName (FName), bImportOptional.
+    let import = |i: usize| import_offset + i * 32;
+    let root_name = |mut i: usize| -> Result<usize> {
+        for _ in 0..import_count {
+            let outer = i32_at(&raw, import(i) + 16)?;
+            if outer >= 0 {
+                break;
+            }
+            i = (-outer - 1) as usize;
+        }
+        Ok(i32_at(&raw, import(i) + 20)? as usize)
+    };
+    let mut added: Vec<String> = vec![];
+    let mut patches = vec![]; // (byte offset of an FName, index into names + added)
+    for i in 0..import_count {
+        if !names
+            .get(root_name(i)?)
+            .is_some_and(|n| n.starts_with("/Script/"))
+        {
+            continue;
+        }
+        for field in [0, 8, 20] {
+            let at = import(i) + field;
+            let (index, number) = (i32_at(&raw, at)? as usize, i32_at(&raw, at + 4)?);
+            if number == 0 {
+                continue;
+            }
+            let full = format!("{}_{}", names[index], number - 1);
+            let slot = match added.iter().position(|n| *n == full) {
+                Some(k) => names.len() + k,
+                None => {
+                    added.push(full);
+                    names.len() + added.len() - 1
+                }
+            };
+            patches.push((at, slot));
+        }
+    }
+    if added.is_empty() {
+        return Ok(0);
+    }
+
+    // Append the names after the name map and shift everything behind it.
+    let names_end = entries.last().map_or(read("NameOffset")? as usize, |e| e.2);
+    let mut new_names = vec![];
+    for n in &added {
+        new_names.extend(fstring(n));
+        new_names.extend([0u8; 4]); // hash; the packer recomputes name hashes
+    }
+    let delta = new_names.len() as i64;
+    let mut buf = raw[..names_end].to_vec();
+    buf.extend(&new_names);
+    buf.extend(&raw[names_end..]);
+    let put_i32 = |buf: &mut Vec<u8>, p: usize, v: i64| {
+        buf[p..p + 4].copy_from_slice(&(v as i32).to_le_bytes())
+    };
+    let put_i64 =
+        |buf: &mut Vec<u8>, p: usize, v: i64| buf[p..p + 8].copy_from_slice(&v.to_le_bytes());
+    let shifted = |v: i64| if v >= names_end as i64 { v + delta } else { v };
+    for field in OFFSET_FIELDS {
+        put_i32(&mut buf, pos[field], shifted(read(field)? as i64));
+    }
+    put_i32(
+        &mut buf,
+        pos["NameCount"],
+        read("NameCount")? as i64 + added.len() as i64,
+    );
+    put_i32(
+        &mut buf,
+        pos["TotalHeaderSize"],
+        read("TotalHeaderSize")? as i64 + delta,
+    );
+    put_i64(
+        &mut buf,
+        pos["BulkDataStartOffset"],
+        i64_at(&raw, pos["BulkDataStartOffset"])? + delta,
+    );
+    let export_offset = shifted(read("ExportOffset")? as i64) as usize;
+    for i in 0..read("ExportCount")? as usize {
+        let e = export_offset + i * 96 + 0x24; // SerialOffset
+        let v = i64_at(&buf, e)?;
+        put_i64(&mut buf, e, v + delta);
+    }
+    for (at, slot) in patches {
+        let at = shifted(at as i64) as usize;
+        put_i32(&mut buf, at, slot as i64);
+        put_i32(&mut buf, at + 4, 0);
+    }
+    std::fs::write(uasset, buf)?;
+    Ok(added.len())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -852,6 +967,41 @@ mod tests {
     /// recolor, and a multi-form hero. Each packed mod is reopened over the game:
     /// its mesh must win at the default skin's path, under the vanilla name.
     /// Run: cargo test real_swap -- --ignored --nocapture
+    /// A cue whose parent is a numbered Python class (PyCue_HitImpact_10352101):
+    /// packed as-is UAssetTool hashes the class wrongly; with the number spelled
+    /// out every script import matches the game's own package.
+    #[test]
+    #[ignore]
+    fn python_class_imports_survive_packing() {
+        let paks = PathBuf::from(crate::settings::Settings::load().game_paks_dir);
+        let game = Game::open(&paks).unwrap();
+        let src =
+            "/Game/Marvel/Characters/1035/1035302/Cues/103521/Cue_Scope_HitImpact_10352101_BP";
+        let root = std::env::temp_dir().join("rivals_swapper_pyclass");
+        let _ = std::fs::remove_dir_all(&root);
+        for spell in [false, true] {
+            let dir = root.join(spell.to_string());
+            let content = dir.join("staging/Marvel/Content");
+            let staged = stage(
+                &game.extract_package(src, &dir.join("x")).unwrap(),
+                &content,
+                src,
+            )
+            .unwrap();
+            if spell {
+                assert_eq!(spell_out_script_import_numbers(&staged).unwrap(), 3);
+            }
+            command(crate::uassettool())
+                .arg("create_mod_iostore")
+                .arg(dir.join("t_9999999_P"))
+                .arg(&content)
+                .output()
+                .unwrap();
+            let utoc = dir.join("t_9999999_P.utoc");
+            assert_eq!(game.script_imports_survive(src, &utoc, src).unwrap(), spell);
+        }
+    }
+
     /// Unticking sound effects keeps the default skin's sounds.
     #[test]
     #[ignore]

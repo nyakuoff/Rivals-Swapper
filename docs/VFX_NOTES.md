@@ -84,3 +84,32 @@ Result: no crash, but **no VFX were swapped in-game.**
   normal UAssetTool path should work. This looks like the most promising lead.
 - **Subclassing cues** (about 251) would still need flattening or a different
   approach.
+
+## Update: the Python-class problem is solved
+
+The "hash can't be recomputed" theory above was wrong.
+
+- **What the hash really is.** The game's hash is the standard one, taken over
+  the full name: `…/PyAbility_103521.PyCue_HitImpact_10352101` →
+  `2B3B40382EE6A1C1`. All 57,874 Python script objects in the global table hash
+  correctly this way.
+- **Where it broke.** Unreal stores such names as a base name plus a number
+  (`PyCue_HitImpact` + `10352102`). retoc's legacy output keeps the numbers.
+  **UAssetTool drops FName numbers when it hashes script imports**, so it writes
+  the hash of `…/PyAbility.PyCue_HitImpact`, a class that doesn't exist.
+- **The fix.** `swap::spell_out_script_import_numbers` runs on every package
+  before UAssetTool packs it. It appends the full names to the name map and
+  points the script imports at them with number 0, so UAssetTool hashes the
+  right string.
+- **How it was checked.**
+  - `python_class_imports_survive_packing` covers the cue that crashed the game:
+    its imports mismatch without the fix and all match with it.
+  - A survey packed all 5,221 cue and MVP packages: 5,216 keep every script
+    import exactly.
+  - The other 5 MVPs import script objects that aren't in the game's own table
+    (stale leftovers). UAssetTool leaves those out.
+
+This likely explains attempt 1 (crash and invisible effects). Cue swaps should
+be retried with this fix before trying anything else. The unanswered questions
+from attempt 2 (how the game picks a skin's cue) only matter if the retry still
+shows no effects.
