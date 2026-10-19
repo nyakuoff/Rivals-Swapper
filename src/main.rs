@@ -1215,6 +1215,10 @@ let (mut note, mut tip) = (note.to_string(), tip.to_string());
                         note += ", custom effects";
                         tip += " Its ability VFX can be swapped too.";
                     }
+                    if skin.missing_effects && skin.swappable {
+                        note += ", some VFX stay default";
+                        tip += " Some of its effects can't be swapped: the game picks them from the skin itself, so they stay default.";
+                    }
 
                     ui.label(RichText::new(note).small().color(MUTED)).on_hover_text(tip);
                     ui.add_space(2.0);
@@ -1278,7 +1282,14 @@ let (mut note, mut tip) = (note.to_string(), tip.to_string());
                     }
                     if skin.custom_effects {
                         ui.checkbox(&mut options.effects, "Visual effects").on_hover_text(
-                            "This skin's own ability VFX replace the default ones. Effects that other skins build on stay default.",
+                            "This skin's own ability VFX, body effects and effect colors replace the default ones.",
+                        );
+                    }
+                    if skin.missing_effects {
+                        ui.label(
+                            RichText::new("Some of this skin's effects can't be swapped and will stay default.")
+                                .small()
+                                .color(YELLOW),
                         );
                     }
                     ui.add_space(8.0);

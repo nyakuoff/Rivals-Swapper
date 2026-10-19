@@ -135,7 +135,7 @@ gaps remained, both now understood:
     combined table mod. Mods outside `/Characters` may also need encryption.
     Not tried yet.
 
-## Update: ultimate cue and skin blueprint (pending in-game test)
+## Update: ultimate cue and skin blueprint (works in-game)
 
 - **Parent cues are no longer held back.** Only a skin cue that imports the
   default cue it would replace is skipped, since it would inherit from itself.
@@ -148,19 +148,50 @@ gaps remained, both now understood:
 - **Still open:** the skin-id-built buff cues (`Cue_Buff_10354101_302_BP`,
   `Cue_Buff_10356101_302_BP`), which nothing references by name.
 
-## Update: variant cues (`<base>_<NNN>_BP`)
+## Variant cues (`<base>_<NNN>_BP`): not swappable yet
 
-- **What they are.** 753 skin cues are variants: `Cue_Buff_10354101_302_BP`
-  subclasses the default's `Cue_Buff_10354101_BP`. Default skins have none.
-- **How the game picks them.** The variant number is per skin but shared within
-  families: 1035304 and 1035305 use 302, many 5xx skins use 501. Nothing
-  references these cues by name, so the game builds the name at runtime. The
-  logic is in NetEase's encrypted Python archive (`script.uep`), which we don't
-  decrypt.
-- **Our guess.** The number most likely comes from the skin's blueprint, which
-  the skin table now hands to the default skin.
-- **What the swap does.** It copies each variant cue into the default skin's
-  folder under the same name (e.g. `1035001/Cues/103541/Cue_Buff_10354101_302_BP`).
-  These are new packages, so there's no self-inheritance and nothing to break if
-  the game never looks there.
-- **Status:** not yet tested in-game.
+Status: **both attempts failed in-game and were reverted.** Affected skins are
+flagged in the app (`Skin::missing_effects`: "some VFX stay default").
+
+**What they are**
+
+- 753 skin cues are variants: `Cue_Buff_10354101_302_BP` subclasses the
+  default's `Cue_Buff_10354101_BP`. Default skins have none.
+- Nothing references them by name, so the game builds the name at runtime. The
+  logic is in NetEase's encrypted Python archive (`script.uep`, game root and
+  `Content/Marvel/NonAssetsToCopy`), which we don't decrypt.
+- **The variant number.** Each `MarvelHeroSkinTable` row has a string field
+  ending in the skin id (sometimes prefixed, e.g. `ps1035304`), followed by two
+  numbers. The cue suffix is the first, or the second for recolors:
+
+  | row | numbers |
+  |---|---|
+  | default 1035001 | 1, 1 ("no variant") |
+  | 1035302 | 302, 1 |
+  | 1035304 (recolor) | 304, 302 |
+
+- They can't be moved onto the base cue's path: they subclass it, so they would
+  inherit from themselves.
+
+**Attempt A: copy each variant cue into the default folder under the same name**
+(`1035001/Cues/103541/Cue_Buff_10354101_302_BP`)
+
+- Result: no effect in-game. The default row's variant number is 1, so the game
+  never asks for a `_302` cue.
+
+**Attempt B: A, plus copy the skin row's two numbers into the default row**
+
+- The patch is in-place, 8 bytes, with no size change, found by matching the id
+  string followed by two numbers in 1..=999. It paired 693 of 697 skins.
+- Result: **skins broke entirely in-game.** The numbers clearly drive more than
+  cue names, likely model, material and other per-variant lookups that then
+  point at assets the default skin doesn't have.
+
+**Ideas for later**
+
+- Find out what else the variant number selects before touching it again: scan
+  for other `_<NNN>` assets keyed by it, beyond cues.
+- Flatten a variant cue into a standalone copy of the base with the variant's
+  overrides, then put it on the base's path. That needs the base's and the
+  variant's property data merged; UAssetTool `to_json` with an up-to-date
+  `.usmap` might make this practical.

@@ -12,9 +12,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::game::{Game, SkinIndex};
 
+/// A variant of a default cue: `<base>_<NNN>_BP`.
+static VARIANT_CUE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(.*)_\d{3}_BP$").unwrap());
+
 const LOCRES_PATH: &str = "Marvel/Content/Localization/Game/en/Game.locres";
 /// Bump when the build rules change so old caches get rebuilt.
-const DB_VERSION: u32 = 10;
+const DB_VERSION: u32 = 11;
 
 /// Fixes for names the localization stores oddly: (char_id, display name).
 const CHAR_NAME_OVERRIDES: &[(&str, &str)] = &[];
@@ -34,6 +37,11 @@ pub struct Skin {
     /// Has ability VFX (gameplay cues) of its own that can replace the default's.
     #[serde(default)]
     pub custom_effects: bool,
+    /// Has variant cues (`<base>_<NNN>_BP`): effects the game picks from the
+    /// skin's variant number, which a swap can't hand to the default skin, so
+    /// those stay default. See docs/VFX_NOTES.md.
+    #[serde(default)]
+    pub missing_effects: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -113,6 +121,16 @@ pub fn build_and_cache(
                     .get(&s.id)
                     .zip(cues.get(&c.default_skin_id))
                     .is_some_and(|(own, default)| own.keys().any(|k| default.contains_key(k)));
+            s.missing_effects = cues
+                .get(&s.id)
+                .zip(cues.get(&c.default_skin_id))
+                .is_some_and(|(own, default)| {
+                    own.keys().any(|k| {
+                        VARIANT_CUE
+                            .captures(k)
+                            .is_some_and(|m| default.contains_key(&format!("{}_BP", &m[1])))
+                    })
+                });
         }
     });
     let _ = std::fs::remove_dir_all(&work);
@@ -426,6 +444,7 @@ pub fn build(flat: &HashMap<String, String>, index: &SkinIndex) -> Vec<Character
                     swappable: own_mesh || retexture,
                     custom_sounds: false,
                     custom_effects: false,
+                    missing_effects: false,
                     retexture,
                 });
         }

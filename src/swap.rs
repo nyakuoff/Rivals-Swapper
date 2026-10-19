@@ -319,18 +319,9 @@ fn skin_overrides(
     out
 }
 
-static VARIANT_CUE: std::sync::LazyLock<regex::Regex> =
-    std::sync::LazyLock::new(|| regex::Regex::new(r"^(.*)_\d{3}_BP$").unwrap());
-
 /// The skin's cues that can replace the default skin's (package, default path).
 /// A skin cue that subclasses (imports) the default cue it would replace is left
 /// out: moved onto that path it would inherit from itself.
-///
-/// Variant cues (`<base>_<NNN>_BP`, subclasses of the default's `<base>_BP`) are
-/// picked by the game from a per-skin variant number, shared within skin
-/// families (1035304 uses 302), so most likely set by the skin's blueprint (see
-/// `write_skin_table`). They're copied into the default skin's folder under the
-/// same name, for when the default skin looks for them there.
 pub fn swappable_cues(
     game: &Game,
     work: &Path,
@@ -344,16 +335,7 @@ pub fn swappable_cues(
     let mut out: Vec<(String, String)> = own
         .iter()
         .filter_map(|(rel, p)| {
-            let variant_of_default = VARIANT_CUE
-                .captures(rel)
-                .is_some_and(|m| defaults.contains_key(&format!("{}_BP", &m[1])));
-            let default_dir = format!("/Game/Marvel/Characters/{}/{default}/Cues/", &default[..4]);
-            let target = match defaults.get(rel) {
-                Some(t) => t.clone(),
-                None if variant_of_default => format!("{default_dir}{rel}"),
-                None => return None,
-            };
-            let target = &target;
+            let target = defaults.get(rel)?;
             let names = names(&game.extract_package(p, work).ok()?).ok()?;
             (!names.contains(target)).then(|| (p.clone(), target.clone()))
         })
@@ -1406,17 +1388,13 @@ mod tests {
             // Effects: each swapped cue reads back at the default path with every
             // script import (Python classes included) exactly as in the game's own.
             let cues = swappable_cues(&game, &out.join("cues"), skin_id, &c.default_skin_id);
-            let replaced: HashSet<&String> =
-                game.skins().cues[&c.default_skin_id].values().collect();
             for (src, target) in &cues {
                 let file = packed.extract_package(target, &out.join("cue")).unwrap();
-                // Copied variant cues (new paths) may only change parameters.
                 assert!(
-                    !replaced.contains(target)
-                        || names(&file)
-                            .unwrap()
-                            .iter()
-                            .any(|n| n.contains(&format!("/{skin_id}/"))),
+                    names(&file)
+                        .unwrap()
+                        .iter()
+                        .any(|n| n.contains(&format!("/{skin_id}/"))),
                     "{target}"
                 );
                 assert!(
