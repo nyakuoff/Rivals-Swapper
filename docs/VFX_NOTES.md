@@ -151,7 +151,9 @@ gaps remained, both now understood:
 ## Variant cues (`<base>_<NNN>_BP`): not swappable yet
 
 Status: **both attempts failed in-game and were reverted.** Affected skins are
-flagged in the app (`Skin::missing_effects`: "some VFX stay default").
+flagged in the app (`Skin::missing_effects`: "some VFX stay default"). The flag
+counts only variant cues that spawn particle systems their base doesn't (56
+skins). Most variant cues only change weapon materials or meshes.
 
 **What they are**
 

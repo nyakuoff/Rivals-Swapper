@@ -17,7 +17,7 @@ static VARIANT_CUE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(.*)_\d{3}_
 
 const LOCRES_PATH: &str = "Marvel/Content/Localization/Game/en/Game.locres";
 /// Bump when the build rules change so old caches get rebuilt.
-const DB_VERSION: u32 = 11;
+const DB_VERSION: u32 = 12;
 
 /// Fixes for names the localization stores oddly: (char_id, display name).
 const CHAR_NAME_OVERRIDES: &[(&str, &str)] = &[];
@@ -121,16 +121,7 @@ pub fn build_and_cache(
                     .get(&s.id)
                     .zip(cues.get(&c.default_skin_id))
                     .is_some_and(|(own, default)| own.keys().any(|k| default.contains_key(k)));
-            s.missing_effects = cues
-                .get(&s.id)
-                .zip(cues.get(&c.default_skin_id))
-                .is_some_and(|(own, default)| {
-                    own.keys().any(|k| {
-                        VARIANT_CUE
-                            .captures(k)
-                            .is_some_and(|m| default.contains_key(&format!("{}_BP", &m[1])))
-                    })
-                });
+            s.missing_effects = variant_cues_add_effects(game, &work, &s.id, &c.default_skin_id);
         }
     });
     let _ = std::fs::remove_dir_all(&work);
@@ -144,6 +135,31 @@ pub fn build_and_cache(
     }
     std::fs::write(cache_file, serde_json::to_vec_pretty(&cache)?)?;
     Ok(cache.characters)
+}
+
+/// Whether the skin has variant cues (`<base>_<NNN>_BP` of a default cue) that
+/// spawn particle systems their base doesn't. The game picks those from the
+/// skin's variant number, which a swap can't hand over, so they stay default.
+/// (Most variant cues only change weapon materials or meshes.)
+fn variant_cues_add_effects(game: &Game, work: &Path, skin: &str, default: &str) -> bool {
+    let cues = &game.skins().cues;
+    let (Some(own), Some(defaults)) = (cues.get(skin), cues.get(default)) else {
+        return false;
+    };
+    let names = |p: &str| crate::swap::names(&game.extract_package(p, work).ok()?).ok();
+    own.iter().any(|(rel, variant)| {
+        let Some(base) = VARIANT_CUE
+            .captures(rel)
+            .and_then(|m| defaults.get(&format!("{}_BP", &m[1])))
+        else {
+            return false;
+        };
+        let (Some(v), Some(b)) = (names(variant), names(base)) else {
+            return false;
+        };
+        v.iter()
+            .any(|n| n.contains("/Particles/") && !b.contains(n))
+    })
 }
 
 /// Whether the skin's sound table plays any event from its own Wwise folder.
